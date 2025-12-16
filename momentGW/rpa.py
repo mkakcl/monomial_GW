@@ -394,13 +394,10 @@ class dRPA(dTDA):
         j = np.arange(1, self.gw.npoints + 1)
         tvals = np.pi * j / (self.gw.npoints + 1)
         points = 1.0 / np.tan(tvals / 2) ** 2
-        
         # Vectorize the inner sum computation
         j_mesh, t_mesh = np.meshgrid(j, tvals, indexing='ij')
         jsums = np.sum(np.sin(j_mesh * t_mesh) * (1 - np.cos(j_mesh * np.pi)) / j_mesh, axis=0)
-        
         weights = (4 * np.sin(tvals) / ((self.gw.npoints + 1) * (1 - np.cos(tvals)) ** 2)) * jsums
-        
         return points, weights
 
     def gen_gausslag_quad_semiinf(self):
