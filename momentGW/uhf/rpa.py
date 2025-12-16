@@ -116,6 +116,7 @@ class dRPA(dTDA, RdRPA):
             Zeroth moment of the density-density response.
         Lia : numpy.ndarray, optional
             Combined (aux, occ, vir) integral array for both spin channels.
+            Expected shape is `(naux, nocc_α * nvir_α + nocc_β * nvir_β)`.
             If `None`, concatenate `self.integrals[0].Lia` and `self.integrals[1].Lia`.
             Default value is `None`.
 
