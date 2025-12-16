@@ -91,7 +91,7 @@ class dRPA(dTDA):
             Previous recursion term required to build the next moment. In the case of RPA this is
             the appropriate [(A+B)(A-B)]^(n-2/2) for the nth moment. These are only calculated on
             even moments, odd moments use the previous even moment value.
-        zeroth moment : numpy.ndarray, optional
+        zeroth_mom : numpy.ndarray, optional
             Zeroth moment of the density-density response.
 
         Returns
