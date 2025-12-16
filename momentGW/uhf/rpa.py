@@ -73,7 +73,7 @@ class dRPA(dTDA, RdRPA):
         )
 
         quad = self.optimise_main_quad(d, diag_eri, name="Combined ERI")
-        integral = self.eval_main_integral(quad, d, Lia=Lia, spin=True)
+        integral = self.eval_main_integral(quad, d, Lia=Lia, include_spin_factor=True)
 
         # Report quadrature errors
         if self.report_quadrature_error:

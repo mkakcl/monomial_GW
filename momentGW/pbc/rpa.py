@@ -242,7 +242,7 @@ class dRPA(dTDA, MoldRPA):
         """
 
         # Generate the bare quadrature
-        bare_quad = self.gen_ClenCur_quad_semiinf()
+        bare_quad = self.gen_clencur_quad_semiinf()
 
         # Calculate the exact value of the integral for the diagonal
         exact = 0.0
