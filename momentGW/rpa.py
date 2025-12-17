@@ -35,7 +35,7 @@ class dRPA(dTDA):
 
     @logging.with_timer("Numerical integration")
     @logging.with_status("Performing numerical integration")
-    def build_zeroth_moment(self, m0=None):
+    def build_zeroth_dd_moment(self, m0=None):
         """Build the zeroth moment by optimising the quadrature and perform the integration for
         the zeroth moment.
 
@@ -103,7 +103,7 @@ class dRPA(dTDA):
         """
         if n % 2 == 0:
             if zeroth_mom is None:
-                zeroth_mom = self.build_zeroth_moment()
+                zeroth_mom = self.build_zeroth_dd_moment()
             if n != 0:
                 tmp = np.dot(self.integrals.Lia * self.d[None], recursion_term) * 4.0
                 tmp = mpi_helper.allreduce(tmp)
@@ -140,7 +140,7 @@ class dRPA(dTDA):
             self._build_d()
 
         if integral is None:
-            integral = self.build_zeroth_moment()
+            integral = self.build_zeroth_dd_moment()
 
         p0, p1 = self.mpi_slice(self.nov)
         moments = np.zeros((self.nmom_max + 1, self.naux, p1 - p0))
