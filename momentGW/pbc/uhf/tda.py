@@ -62,7 +62,7 @@ class dTDA(KdTDA, MolUdTDA):
 
     @logging.with_timer("Zeroth density-density moments")
     @logging.with_status("Constructing zeroth density-density moment")
-    def build_zeroth_moment(self):
+    def build_zeroth_dd_moment(self):
         """Build the zeroth moment of the density-density response for a given set of k-points.
 
         Returns
@@ -109,7 +109,7 @@ class dTDA(KdTDA, MolUdTDA):
                 raise AttributeError("Zeroth moment should not have a recursion term")
             if zeroth_mom is None:
                 raise AttributeError(
-                    "0th moment must be provided by build_zeroth_moment for k-point calculations."
+                    "0th moment must be provided by build_zeroth_dd_moment for pbc calculations."
                 )
             else:
                 for kj in self.kpts.loop(1, mpi=True):
@@ -322,7 +322,7 @@ class dTDA(KdTDA, MolUdTDA):
             self._build_d()
 
         if moments_dd is None:
-            zeroth_mom = self.build_zeroth_moment()
+            zeroth_mom = self.build_zeroth_dd_moment()
             recursion_term = np.zeros_like(zeroth_mom)
 
         # Get the moments in (aux|aux) and rotate to (mo|mo)

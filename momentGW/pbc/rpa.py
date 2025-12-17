@@ -56,7 +56,7 @@ class dRPA(dTDA, MoldRPA):
 
     @logging.with_timer("Numerical integration")
     @logging.with_status("Performing numerical integration")
-    def build_zeroth_moment(self):
+    def build_zeroth_dd_moment(self):
         """Optimise the quadrature and perform the integration for a given set of k-points for the
         zeroth moment.
 
@@ -127,7 +127,7 @@ class dRPA(dTDA, MoldRPA):
         if n % 2 == 0:
             if zeroth_mom is None:
                 raise AttributeError(
-                    "0th moment must be provided by build_zeroth_moment for k-point calculations."
+                    "0th moment must be provided by build_zeroth_dd_moment for pbc calculations."
                 )
             if n != 0:
                 tmp = 0.0
@@ -191,7 +191,7 @@ class dRPA(dTDA, MoldRPA):
             self._build_d()
 
         if integral is None:
-            integral = self.build_zeroth_moment()
+            integral = self.build_zeroth_dd_moment()
 
         kpts = self.kpts
         Lia = self.integrals.Lia

@@ -43,7 +43,7 @@ class dTDA(RdTDA):
 
     @logging.with_timer("Zeroth density-density moments")
     @logging.with_status("Constructing zeroth density-density moment")
-    def build_zeroth_moment(self):
+    def build_zeroth_dd_moment(self):
         """Build the zeroth moment of the density-density response.
 
         Parameters
@@ -98,7 +98,7 @@ class dTDA(RdTDA):
                     f"To build the {n}th dd-moment, a recursion_term must be provided"
                 )
             if zeroth_mom is None:
-                recursion_term = self.build_zeroth_moment()
+                recursion_term = self.build_zeroth_dd_moment()
             else:
                 recursion_term = zeroth_mom
         else:
@@ -129,7 +129,7 @@ class dTDA(RdTDA):
         moments = np.zeros((self.nmom_max + 1, self.naux, (a1 - a0) + (b1 - b0)))
 
         # Get the zeroth order moment
-        moments[0] = self.build_zeroth_moment()
+        moments[0] = self.build_zeroth_dd_moment()
 
         # Get the higher order moments
         for i in range(1, self.nmom_max + 1):
@@ -249,7 +249,7 @@ class dTDA(RdTDA):
         ]
 
         if moments_dd is None:
-            zeroth_mom = self.build_zeroth_moment()
+            zeroth_mom = self.build_zeroth_dd_moment()
             recursion_term = None
 
         # Get the moments in (aux|aux) and rotate to (mo|mo)

@@ -33,7 +33,7 @@ class dRPA(dTDA, RdRPA):
 
     @logging.with_timer("Numerical integration")
     @logging.with_status("Performing numerical integration")
-    def build_zeroth_moment(self):
+    def build_zeroth_dd_moment(self):
         """Optimise the quadrature and perform the integration.
 
         Returns
@@ -132,7 +132,7 @@ class dRPA(dTDA, RdRPA):
 
         if n % 2 == 0:
             if zeroth_mom is None:
-                zeroth_mom = self.build_zeroth_moment()
+                zeroth_mom = self.build_zeroth_dd_moment()
             if n != 0:
                 tmp = np.dot(Lia * self.d[None], recursion_term) * 2.0
                 tmp = mpi_helper.allreduce(tmp)
@@ -172,7 +172,7 @@ class dRPA(dTDA, RdRPA):
             self._build_d()
 
         if integral is None:
-            integral = self.build_zeroth_moment()
+            integral = self.build_zeroth_dd_moment()
 
         a0, a1 = self.mpi_slice(self.nov[0])
         b0, b1 = self.mpi_slice(self.nov[1])
