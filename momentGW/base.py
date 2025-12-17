@@ -626,7 +626,7 @@ class BaseGW(Base):
 
         # Get the integrals
         if integrals is None:
-            integrals = self.ao2mo()
+            integrals = self.ao2mo(transform=False)
 
         # Run the kernel
         with logging.with_status(f"Running {self.name} kernel"):

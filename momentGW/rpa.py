@@ -248,6 +248,7 @@ class dRPA(dTDA):
 
         # Calculate the exact value of the integral for the diagonal
         exact = np.sum(d * (d * (d + diag_eri)) ** -0.5)
+        exact -= np.sum(np.ones_like(d))
 
         # Define the integrand
         integrand = lambda quad: self.eval_diag_main_integral(quad, d, diag_eri)
@@ -292,9 +293,10 @@ class dRPA(dTDA):
         solve = 10**res.x
 
         # Report the result
-        full_name = f"{f'{name} ' if name else ''}quadrature".capitalize()
-        style = logging.rate(res.fun, 1e-14, 1e-10)
-        logging.write(f"{full_name} scale:  {solve:.2e} (error = [{style}]{res.fun:.2e}[/])")
+        if name is not None:
+            full_name = f"{f'{name} ' if name else ''}quadrature".capitalize()
+            style = logging.rate(res.fun, 1e-14, 1e-10)
+            logging.write(f"{full_name} scale:  {solve:.2e} (error = [{style}]{res.fun:.2e}[/])")
 
         return self.rescale_quad(bare_quad, solve)
 
@@ -321,6 +323,8 @@ class dRPA(dTDA):
         for point, weight in zip(*quad):
             contrib = (d + diag_eri) * d + point**2
             contrib = np.sum(d * contrib ** (-1))
+            f = d/(d**2+point**2)
+            contrib -= np.sum(f)
 
             integral += weight * contrib * 2 / np.pi
 
@@ -363,7 +367,6 @@ class dRPA(dTDA):
         # Initialise the integral
         dim = 3 if self.report_quadrature_error else 1
         integral = np.zeros((dim, naux, nov))
-        integral[:] += Lia
 
         # Calculate the integral for each point
         for i, (point, weight) in enumerate(zip(*quad)):
@@ -380,6 +383,8 @@ class dRPA(dTDA):
                 integral[1] += 2 * contrib
             if i % 4 == 0 and self.report_quadrature_error:
                 integral[2] += 4 * contrib
+
+        integral[:] += Lia
 
         return integral
 
@@ -401,21 +406,6 @@ class dRPA(dTDA):
                 for (t, s) in zip(tvals, jsums)
             ]
         )
-        return points, weights
-
-    def gen_gausslag_quad_semiinf(self):
-        """Generate quadrature points and weights for Gauss-Laguerre quadrature over an ``(0,
-        +inf)``.
-
-        Returns
-        -------
-        points : numpy.ndarray
-            Quadrature points.
-        weights : numpy.ndarray
-            Quadrature weights.
-        """
-        points, weights = np.polynomial.laguerre.laggauss(self.gw.npoints)
-        weights *= np.exp(points)
         return points, weights
 
     def estimate_error_clencur(self, i4, i2, imag_tol=1e-10):
