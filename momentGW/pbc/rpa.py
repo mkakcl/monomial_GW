@@ -112,7 +112,7 @@ class dRPA(dTDA, MoldRPA):
             Previous recursion term required to build the next moment. In the case of RPA this is
             the appropriate [(A+B)(A-B)]^(n-2/2) for the nth moment. These are only calculated on
             even moments, odd moments use the previous even moment value.
-        zeroth moment : numpy.ndarray, optional
+        zeroth_mom : numpy.ndarray, optional
             Zeroth moment of the density-density response.
 
         Returns
@@ -242,7 +242,7 @@ class dRPA(dTDA, MoldRPA):
         """
 
         # Generate the bare quadrature
-        bare_quad = self.gen_ClenCur_quad_semiinf()
+        bare_quad = self.gen_clencur_quad_semiinf()
 
         # Calculate the exact value of the integral for the diagonal
         exact = 0.0

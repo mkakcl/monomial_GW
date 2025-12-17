@@ -91,7 +91,7 @@ class dRPA(dTDA):
             Previous recursion term required to build the next moment. In the case of RPA this is
             the appropriate [(A+B)(A-B)]^(n-2/2) for the nth moment. These are only calculated on
             even moments, odd moments use the previous even moment value.
-        zeroth moment : numpy.ndarray, optional
+        zeroth_mom : numpy.ndarray, optional
             Zeroth moment of the density-density response.
 
         Returns
@@ -244,7 +244,7 @@ class dRPA(dTDA):
         """
 
         # Generate the bare quadrature
-        bare_quad = self.gen_ClenCur_quad_semiinf()
+        bare_quad = self.gen_clencur_quad_semiinf()
 
         # Calculate the exact value of the integral for the diagonal
         exact = np.sum(d * (d * (d + diag_eri)) ** -0.5)
@@ -326,20 +326,24 @@ class dRPA(dTDA):
 
         return integral
 
-    def eval_main_integral(self, quad, d=None, Lia=None, spin=False):
+    def eval_main_integral(self, quad, d=None, Lia=None, include_spin_factor=False):
         """Evaluate the main integral.
 
         Parameters
         ----------
         quad : tuple
             The quadrature points and weights.
-        Lia : numpy.ndarray
+        d : numpy.ndarray, optional
+            Orbital energy differences. If `None`, use `self.d`.
+            Default value is `None`.
+        Lia : numpy.ndarray, optional
             The (aux, W occ, W vir) integral array. If `None`, use
             `self.integrals.Lia`. Keyword argument allows for the use of
             this function with `uhf` and `pbc` modules.
-        spin : bool
-            A boolean operator to control whether an extra factor of 2
-            is included to account for the two spin states.
+        include_spin_factor : bool, optional
+            If `True`, use spin factor of 2 (for unrestricted with combined
+            spin channels). If `False`, use spin factor of 4 (for restricted).
+            Default value is `False`.
 
         Returns
         -------
@@ -351,7 +355,7 @@ class dRPA(dTDA):
         if d is None:
             d = self.d
 
-        if spin:
+        if include_spin_factor:
             spin_factor = 2.0
         else:
             spin_factor = 4.0
@@ -383,24 +387,17 @@ class dRPA(dTDA):
 
         return integral
 
-    def gen_ClenCur_quad_semiinf(self):
+    def gen_clencur_quad_semiinf(self):
         """Generate quadrature points and weights for Clenshaw-Curtis quadrature over semiinfinite
         range (0 to +inf)
         """
-        tvals = [(np.pi * j / (self.gw.npoints + 1)) for j in range(1, self.gw.npoints + 1)]
-        points = np.asarray([1.0 / (np.tan(t / 2) ** 2) for t in tvals])
-        jsums = [
-            sum(
-                [np.sin(j * t) * (1 - np.cos(j * np.pi)) / j for j in range(1, self.gw.npoints + 1)]
-            )
-            for t in tvals
-        ]
-        weights = np.asarray(
-            [
-                1.0 * (4 * np.sin(t) / ((self.gw.npoints + 1) * (1 - np.cos(t)) ** 2)) * s
-                for (t, s) in zip(tvals, jsums)
-            ]
-        )
+        j = np.arange(1, self.gw.npoints + 1)
+        tvals = np.pi * j / (self.gw.npoints + 1)
+        points = 1.0 / np.tan(tvals / 2) ** 2
+        # Vectorize the inner sum computation
+        j_mesh, t_mesh = np.meshgrid(j, tvals, indexing="ij")
+        jsums = np.sum(np.sin(j_mesh * t_mesh) * (1 - np.cos(j_mesh * np.pi)) / j_mesh, axis=0)
+        weights = (4 * np.sin(tvals) / ((self.gw.npoints + 1) * (1 - np.cos(tvals)) ** 2)) * jsums
         return points, weights
 
     def gen_gausslag_quad_semiinf(self):

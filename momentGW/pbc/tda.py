@@ -83,7 +83,7 @@ class dTDA(MoldTDA):
         recursion_term : numpy.ndarray, optional
             Previous recursion term required to build the next moment. In the case of TDA this is
             the previous density-density response.
-        zeroth moment : numpy.ndarray, optional
+        zeroth_mom : numpy.ndarray, optional
             Zeroth moment of the density-density response.
 
         Returns

@@ -73,8 +73,13 @@ class dTDA(RdTDA):
         recursion_term : numpy.ndarray, optional
             Previous recursion term required to build the next moment. In the case of TDA this is
             the previous density-density response.
-        zeroth moment : numpy.ndarray, optional
+        zeroth_mom : numpy.ndarray, optional
             Zeroth moment of the density-density response.
+        Lia : numpy.ndarray, optional
+            Combined (aux, occ, vir) integral array for both spin channels.
+            Expected shape is `(naux, nocc_α * nvir_α + nocc_β * nvir_β)`.
+            If `None`, concatenate `self.integrals[0].Lia` and `self.integrals[1].Lia`.
+            Default value is `None`.
 
         Returns
         -------
@@ -111,9 +116,8 @@ class dTDA(RdTDA):
 
         Returns
         -------
-        moments : tuple of numpy.ndarray
-            Moments of the density-density response for each spin
-            channel.
+        moments : numpy.ndarray
+            Moments of the density-density response combining both spin channels.
         """
         # Construct energy differences
         if self.d is None:
