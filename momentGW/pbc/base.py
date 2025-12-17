@@ -49,14 +49,15 @@ class BaseKGW(BaseGW):
     thc_opts : dict, optional
         Dictionary of options to be used for THC calculations. Current
         implementation requires a filepath to import the THC integrals.
-    fc : bool, optional
-        If `True`, apply finite size corrections. Default value is
-        `False`.
+    fsc : str, optional
+        Combination of 'H', 'W' and/or 'B' to indicate the finite size
+        corrections to be included in the calculation. This will also
+        add an ewald correction to the static. Default value is None.
     """
 
     _defaults = OrderedDict(
         **BaseGW._defaults,
-        fc=False,
+        fsc=None,
     )
     _defaults["compression"] = None
 
@@ -67,7 +68,7 @@ class BaseKGW(BaseGW):
         super().__init__(mf, **kwargs)
 
         # Options
-        self.fc = False
+        self.fsc = None
 
         # Attributes
         self._kpts = KPoints(self.cell, getattr(mf, "kpts", np.zeros((1, 3))))
