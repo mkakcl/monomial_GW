@@ -113,27 +113,28 @@ class dTDA(MoldTDA):
                 for kj in self.kpts.loop(1, mpi=True):
                     kb = self.kpts.member(self.kpts.wrap_around(self.kpts[q] + self.kpts[kj]))
                     recursion_term[q, kb] = zeroth_mom[q, kb]
-                    eta_aux += np.dot(recursion_term[q, kb], self.integrals.Lia[kj, kb].T.conj())
+                    eta_aux += np.dot(recursion_term[q, kb], Lia[kj, kb].T.conj())
         else:
             if recursion_term is None:
                 raise AttributeError(
                     f"To build the {n}th dd-moment, a recursion_term must be provided"
                 )
             kpts = self.kpts
-            tmp = np.zeros((self.naux[q], self.naux[q]), dtype=complex)
+            naux = Lia[0,kpts.member(kpts.wrap_around(kpts[q] + kpts[0]))].shape[0]
+            tmp = np.zeros((naux, naux), dtype=complex)
             for ki in kpts.loop(1, mpi=True):
                 ka = kpts.member(kpts.wrap_around(kpts[q] + kpts[ki]))
 
-                tmp += np.dot(recursion_term[q, ka], self.integrals.Lia[ki, ka].T.conj())
+                tmp += np.dot(recursion_term[q, ka], Lia[ki, ka].T.conj())
 
             tmp = mpi_helper.allreduce(tmp)
             tmp *= 2.0 / self.nkpts
             for kj in kpts.loop(1, mpi=True):
                 kb = kpts.member(kpts.wrap_around(kpts[q] + kpts[kj]))
                 recursion_term[q, kb] = recursion_term[q, kb] * self.d[q, kb].ravel()[None]
-                recursion_term[q, kb] += np.dot(tmp, self.integrals.Lia[kj, kb]) #.conj()
+                recursion_term[q, kb] += np.dot(tmp, Lia[kj, kb]) #.conj()
 
-                eta_aux += np.dot(recursion_term[q, kb], self.integrals.Lia[kj, kb].T.conj())
+                eta_aux += np.dot(recursion_term[q, kb], Lia[kj, kb].T.conj())
             del tmp
 
         eta_aux = mpi_helper.allreduce(eta_aux)
@@ -385,8 +386,6 @@ class dTDA(MoldTDA):
 
         # Get the moments in (aux|aux) and rotate to (mo|mo)
         for q in kpts.loop(1):
-            print("")
-            print("outer", q)
             if "Lia" not in integrals._blocks or not integrals._blocks["Lia"]["built_full"]:
                 integrals.get_Lia_q(q)
             if "Lpx" not in integrals._blocks or not integrals._blocks["Lpx"]["built_full"]:
@@ -410,14 +409,11 @@ class dTDA(MoldTDA):
 
                 if self.fsc is not None and q==0 and "B" not in self.fsc:
                     if n == 0:
-                        zeroth_mom_nB = self.build_zeroth_moment(q, Lia=self.integrals.Mia)
+                        zeroth_mom_nB = self.build_zeroth_dd_moment(q, Lia=self.integrals.Mia)
                         recursion_term_nB = np.zeros_like(zeroth_mom_nB)
                     recursion_term_nB, eta_aux_nB = self.build_nth_dd_moment(
                         n, q, recursion_term_nB, zeroth_mom_nB, Lia=self.integrals.Mia
                     )
-                if q ==0:
-                    print("")
-                    print("n", n)
 
                 for kp in kpts.loop(1, mpi=True):
                     kx = kpts.member(kpts.wrap_around(kpts[kp] - kpts[q]))
@@ -429,7 +425,7 @@ class dTDA(MoldTDA):
                         Lp = self.integrals.Lpx[kp, kx][:, :, x]
                         subscript = f"P{pchar},Q{qchar},PQ->{pqchar}"
                         if q==0 and self.fsc is not None:
-                            wing_tmp =                                 wing_tmp = util.einsum(
+                            wing_tmp = util.einsum(
                                     f"P,P{pchar}{qchar}->{pqchar}",
                                     eta_aux[0, 1:],
                                     self.integrals.Lpx[kp, kx],
@@ -471,10 +467,7 @@ class dTDA(MoldTDA):
             if self.gw.diagonal_se:
                 eta[x, n][x] += (2 / np.pi) * q0 * eta_aux[0, 0] * self.nkpts
             else:
-                # print("head", ((2 / np.pi) * q0 * eta_aux[0, 0] * self.nkpts) / eta[x, n][x])
                 eta[x, n][x, x] += (2 / np.pi) * q0 * eta_aux[0, 0] * self.nkpts
-                # print("pass")
-                # pass
         if "W" in self.fsc:
             # wing_tmp = util.einsum("P,Pp->p",  eta_aux[0, 1:], Lp)
             wing_tmp = (
