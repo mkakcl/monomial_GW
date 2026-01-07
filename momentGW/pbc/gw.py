@@ -67,6 +67,7 @@ class KGW(BaseKGW, GW):
 
     def get_veff(self, integrals, dm=None, **kwargs):
         """Get the effective potential.
+
         Parameters
         ----------
         integrals : KIntegrals
@@ -76,6 +77,7 @@ class KGW(BaseKGW, GW):
             `self.make_rdm1`. Default value is `None`.
         **kwargs : dict, optional
             Additional keyword arguments passed to the integrals object.
+
         Returns
         -------
         veff : numpy.ndarray
@@ -120,7 +122,8 @@ class KGW(BaseKGW, GW):
             if any(char not in {"H", "W", "B"} for char in self.fsc):
                 raise ValueError(
                     "Finite size corrections require as an input a combination of H, W and B "
-                    "for the different finite size corrections (H: Head, W: Wing, B: Body)")
+                    "for the different finite size corrections (H: Head, W: Wing, B: Body)"
+                )
             kwargs = {**kwargs, "force_build": True}
         else:
             kwargs = {**kwargs, "force_build": False}
@@ -149,7 +152,7 @@ class KGW(BaseKGW, GW):
         """
 
         if self.polarizability.lower() == "dtda":
-            tda = dTDA(self, nmom_max, integrals, fsc=self.fsc,  **kwargs)
+            tda = dTDA(self, nmom_max, integrals, fsc=self.fsc, **kwargs)
             return tda.kernel()
         if self.polarizability.lower() == "drpa":
             rpa = dRPA(self, nmom_max, integrals, fsc=self.fsc, **kwargs)

@@ -139,9 +139,9 @@ class GW(BaseGW):
         polarizability = self.polarizability.upper().replace("DTDA", "dTDA").replace("DRPA", "dRPA")
         return f"{polarizability}-G0W0"
 
-
     def get_veff(self, integrals, dm=None, **kwargs):
         """Get the effective potential.
+
         Parameters
         ----------
         integrals : Integrals
@@ -151,6 +151,7 @@ class GW(BaseGW):
             Default value is `None`.
         **kwargs : dict, optional
             Additional keyword arguments passed to the integrals object.
+
         Returns
         -------
         veff : numpy.ndarray

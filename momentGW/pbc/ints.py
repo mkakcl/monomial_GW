@@ -1,13 +1,12 @@
 """Integral helpers with periodic boundary conditions."""
 
 import functools
-from collections import defaultdict
 
 import h5py
 import numpy as np
 from pyscf import lib
 from pyscf.ao2mo import _ao2mo
-from pyscf.pbc import dft,tools
+from pyscf.pbc import dft, tools
 from scipy.linalg import cholesky
 
 from momentGW import logging, mpi_helper, util
@@ -291,7 +290,7 @@ class KIntegrals(Integrals):
                 if do_Lpx:
                     Lpx[ki, kj] = Lpx_k
                 if do_Lia:
-                    if self.fsc is not None and q==0:
+                    if self.fsc is not None and q == 0:
                         Lia[ki, kj] = np.vstack([pw[ki], Lia_k])
                     else:
                         Lia[ki, kj] = Lia_k
@@ -345,6 +344,19 @@ class KIntegrals(Integrals):
             self._blocks["Lai"] = Lai
 
     def get__ao2mo_e2(self, Lpq, mo_coeff, orb_slice, out=None):
+        """Perform transformations for integrals in-place.
+
+        Parameters
+        ----------
+        Lpq : numpy.ndarray
+            A single k-point ``(aux, MO, MO)`` array.
+        mo_coeff : numpy.ndarray
+            Molecular orbital coefficients at a k-point pair.
+        orb_slice : tuple
+            Transformed shape caused by the transformation.
+        out : numpy.ndarray
+            Outputted array formed by the transformation.
+        """
         tao = np.empty([], dtype=np.int32)
         mo_coeff = np.asarray(mo_coeff, order="F")
         if Lpq.flags.f_contiguous:
@@ -356,17 +368,24 @@ class KIntegrals(Integrals):
         return out
 
     def get_Lia_q(self, q, rot=None):
+        """Compute the ``(aux, occ, vir)`` array for a k-point difference ``q``
+
+        Parameters
+        ----------
+        q : int
+            Index denoting the shift in momentum from ``i -> a``.
+        rot : numpy.ndarray
+            Rotation matrix into the compressed auxiliary space.
+        """
         nocc_w = self.nocc_w
         nvir_w = self.nvir_w
         naux = self.naux
-        if q==0:
-            fix_HWB = None
 
         Lia = {}
         if self.fsc is not None and "B" not in self.fsc:
             Mia = {}
 
-        if self.fsc is not None and q==0:
+        if self.fsc is not None and q == 0:
             pw = self.get_HWB_pw()
 
         if rot is None:
@@ -375,9 +394,7 @@ class KIntegrals(Integrals):
 
         for ki in self.kpts.loop(1):
             kj = self.kpts.member(self.kpts.wrap_around(self.kpts[q] + self.kpts[ki]))
-            Lia_k = (
-                np.zeros((naux[q], nocc_w[ki] * nvir_w[kj]), dtype=complex)
-            )
+            Lia_k = np.zeros((naux[q], nocc_w[ki] * nvir_w[kj]), dtype=complex)
             b1 = 0
             for block in self.with_df.sr_loop((ki, kj), compact=False):  # TODO lock I/O
                 if block[2] == -1:
@@ -386,7 +403,6 @@ class KIntegrals(Integrals):
                 b0, b1 = b1, b1 + block.shape[0]
                 progress = ki * len(self.kpts) ** 2 + kj * len(self.kpts) + b0
                 progress /= len(self.kpts) ** 2 + naux[q]
-
 
                 with logging.with_status(f"block [{ki}, {kj}, {b0}:{b1}] ({progress:.1%})"):
                     block_comp = util.einsum("L...,LQ->Q...", block, rot[q][b0:b1].conj())
@@ -402,15 +418,24 @@ class KIntegrals(Integrals):
                     Lia_k += tmp.reshape(Lia_k.shape)
             if self.fsc is not None and q == 0:
                 if "B" not in self.fsc:
-                    Mia[ki,kj] = Lia_k
+                    Mia[ki, kj] = Lia_k
                     self._blocks["Mia"] = Mia
                 Lia[ki, kj] = np.vstack([pw[ki], Lia_k])
             else:
                 Lia[ki, kj] = Lia_k
-        Lia["built_full"] =False
+        Lia["built_full"] = False
         self._blocks["Lia"] = Lia
 
     def get_Lpx_q(self, q, rot=None):
+        """Compute the ``(aux, MO, MO)`` array for a k-point difference ``q``
+
+        Parameters
+        ----------
+        q : int
+            Index denoting the shift in momentum from ``p -> x``.
+        rot : numpy.ndarray
+            Rotation matrix into the compressed auxiliary space.
+        """
         nmo = self.nmo
         nmo_g = self.nmo_g
         naux = self.naux
@@ -422,7 +447,8 @@ class KIntegrals(Integrals):
             rot = self.rot_check(naux)
 
         for ki in self.kpts.loop(1, mpi=True):
-            kj = self.kpts.member(self.kpts.wrap_around(self.kpts[ki] - self.kpts[q])) # Note difference to get Lia
+            # Note this is different to Lia.
+            kj = self.kpts.member(self.kpts.wrap_around(self.kpts[ki] - self.kpts[q]))
             Lpx_k = np.zeros((naux[q], nmo, nmo_g[kj]), dtype=complex)
             b1 = 0
             for block in self.with_df.sr_loop((ki, kj), compact=False):  # TODO lock I/O
@@ -435,9 +461,7 @@ class KIntegrals(Integrals):
 
                 with logging.with_status(f"block [{ki}, {kj}, {b0}:{b1}] ({progress:.1%})"):
                     block_comp = util.einsum("L...,LQ->Q...", block, rot[q][b0:b1].conj())
-                    coeffs = np.concatenate(
-                        (self.mo_coeff[ki], self.mo_coeff_g[kj]), axis=1
-                    )
+                    coeffs = np.concatenate((self.mo_coeff[ki], self.mo_coeff_g[kj]), axis=1)
                     orb_slice = (0, nmo, nmo, nmo + nmo_g[kj])
                     tmp = self.get__ao2mo_e2(block_comp, coeffs, orb_slice)
                     Lpx_k += tmp.reshape(Lpx_k.shape)
@@ -446,6 +470,13 @@ class KIntegrals(Integrals):
         self._blocks["Lpx"] = Lpx
 
     def get_Lpq_q(self, q):
+        """Compute the ``(aux, MO, MO)`` array for a k-point difference ``q``
+
+        Parameters
+        ----------
+        q : int
+            Index denoting the shift in momentum from ``p -> q``.
+        """
         naux_full = self.naux_full
         nmo = self.nmo
 
@@ -471,8 +502,14 @@ class KIntegrals(Integrals):
         Lpq["built_full"] = False
         self._blocks["Lpq"] = Lpq
 
-
     def rot_check(self, naux):
+        """Compute the ``(aux, MO, MO)`` array for a k-point difference ``q``
+
+        Parameters
+        ----------
+        naux : int
+            Size of the auxiliary space.
+        """
         rot = self._rot
         if rot is None:
             rot = np.zeros(len(self.kpts), dtype=object)
@@ -817,20 +854,29 @@ class KIntegrals(Integrals):
     @logging.with_timer("HWB plane waves")
     @logging.with_status("Building HWB plane waves")
     def get_HWB_pw(self):
+        """
+        Create the plane waves required for the Head, Wings and Body (HWB).
+
+        Returns
+        -------
+        pw : numpy.ndarray
+            Plane wave approximation for the divergence at G=0.
+        """
         q_abs = self.kpts.cell.get_abs_kpts(np.array([1e-3, 0, 0]).reshape(1, 3))
         hwb_const = np.sqrt(4.0 * np.pi) / np.linalg.norm(q_abs[0])
         pw = hwb_const * self.build_pert_term(q_abs[0])
         return pw
 
-
     def build_pert_term(self, qpt):
         """
         Build the charge-density density matrix at q-point index qpt
         using perturbation theory.
+
         Parameters
         ----------
         qpt : numpy.ndarray
             q-point index representing the limit of our plane waves.
+
         Returns
         -------
         pw_hw : numpy.ndarray

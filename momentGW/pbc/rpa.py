@@ -34,7 +34,7 @@ class dRPA(dTDA, MoldRPA):
     `momentGW.tda.dTDA.kernel` for calculation run details.
     """
 
-    def _build_diag_eri(self,q, Lia=None):
+    def _build_diag_eri(self, q, Lia=None):
         """Construct the diagonal of the ERIs at each k-point.
 
         Returns
@@ -50,9 +50,7 @@ class dRPA(dTDA, MoldRPA):
 
         for ki in self.kpts.loop(1, mpi=True):
             kb = self.kpts.member(self.kpts.wrap_around(self.kpts[q] + self.kpts[ki]))
-            diag_eri[q, kb] = (
-                np.sum(np.abs(Lia[ki, kb]) ** 2, axis=0) / self.nkpts
-            )
+            diag_eri[q, kb] = np.sum(np.abs(Lia[ki, kb]) ** 2, axis=0) / self.nkpts
 
         return diag_eri
 
@@ -90,10 +88,10 @@ class dRPA(dTDA, MoldRPA):
         if self.report_quadrature_error:
             a = 0.0
             b = 0.0
-            for q in self.kpts.loop(1):
+            for q_new in self.kpts.loop(1):
                 for ka in self.kpts.loop(1, mpi=True):
-                    a += np.sum((integral[0, q, ka] - integral[2, q, ka]) ** 2)
-                    b += np.sum((integral[0, q, ka] - integral[1, q, ka]) ** 2)
+                    a += np.sum((integral[0, q_new, ka] - integral[2, q_new, ka]) ** 2)
+                    b += np.sum((integral[0, q_new, ka] - integral[1, q_new, ka]) ** 2)
             a, b = mpi_helper.allreduce(np.array([a, b]))
             a, b = a**0.5, b**0.5
             err = self.estimate_error_clencur(a, b)
@@ -156,9 +154,7 @@ class dRPA(dTDA, MoldRPA):
                     recursion_term[q, kb] = util.einsum(
                         "i, iP->iP", self.d[q, kb] ** 2, recursion_term[q, kb]
                     )
-                    recursion_term[q, kb] += util.einsum(
-                        "Pi,PQ->iQ", Lia[ka, kb].conj(), tmp
-                    )
+                    recursion_term[q, kb] += util.einsum("Pi,PQ->iQ", Lia[ka, kb].conj(), tmp)
                     eta_aux += np.dot(zeroth_mom[q, kb], recursion_term[q, kb])
             else:
                 if recursion_term is None:
@@ -176,8 +172,7 @@ class dRPA(dTDA, MoldRPA):
             for ka in kpts.loop(1, mpi=True):
                 kb = kpts.member(kpts.wrap_around(kpts[q] + kpts[ka]))
                 eta_aux += (
-                    np.dot(Lia[ka, kb] * self.d[q, kb][None], recursion_term[q, kb])
-                    / self.nkpts
+                    np.dot(Lia[ka, kb] * self.d[q, kb][None], recursion_term[q, kb]) / self.nkpts
                 )
 
         eta_aux = mpi_helper.allreduce(eta_aux)
@@ -267,15 +262,14 @@ class dRPA(dTDA, MoldRPA):
             exact -= np.sum(np.ones_like(d[q, kb]))
         exact = mpi_helper.allreduce(exact)
 
-
         # Define the integrand
         integrand = lambda quad: self.eval_diag_main_integral(quad, d, diag_eri, q)
 
         # Get the optimal quadrature
-        if q==0:
-            quad = self.get_optimal_quad(bare_quad, integrand, exact, name=name+f" (q={q})")
+        if q == 0:
+            quad = self.get_optimal_quad(bare_quad, integrand, exact, name=name + f" (q={q})")
         else:
-            quad = self.get_optimal_quad(bare_quad, integrand, exact, name=name+f" (q={q})")
+            quad = self.get_optimal_quad(bare_quad, integrand, exact, name=name + f" (q={q})")
 
         return quad
 
@@ -315,9 +309,9 @@ class dRPA(dTDA, MoldRPA):
                 kb = self.kpts.member(self.kpts.wrap_around(self.kpts[q] + self.kpts[kj]))
                 val = (d[q, kb] + diag_eri[q, kb]) * d[q, kb] + point**2
                 contrib += np.sum(d[q, kb] * val ** (-1))
-                f = d[q, kb] / (d[q, kb] ** 2 + point ** 2)
+                f = d[q, kb] / (d[q, kb] ** 2 + point**2)
                 contrib -= np.sum(f)
-            integral += weight * contrib* 2 / np.pi
+            integral += weight * contrib * 2 / np.pi
 
         integral = mpi_helper.allreduce(integral)
 

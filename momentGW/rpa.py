@@ -323,7 +323,7 @@ class dRPA(dTDA):
         for point, weight in zip(*quad):
             contrib = (d + diag_eri) * d + point**2
             contrib = np.sum(d * contrib ** (-1))
-            f = d/(d**2+point**2)
+            f = d / (d**2 + point**2)
             contrib -= np.sum(f)
 
             integral += weight * contrib * 2 / np.pi

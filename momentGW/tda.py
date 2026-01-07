@@ -29,15 +29,7 @@ class dTDA(BaseSE):
         If `None`, use `gw.mo_occ` for both. Default value is `None`.
     """
 
-    def __init__(
-        self,
-        gw,
-        nmom_max,
-        integrals,
-        mo_energy=None,
-        mo_occ=None,
-        fsc=None
-    ):
+    def __init__(self, gw, nmom_max, integrals, mo_energy=None, mo_occ=None, fsc=None):
         super().__init__(gw, nmom_max, integrals)
 
         # Get the MO energies for G and W
@@ -192,7 +184,15 @@ class dTDA(BaseSE):
 
     @logging.with_timer("Moment convolution")
     @logging.with_status("Convoluting moments")
-    def convolve(self, eta, eta_orders=None, mo_energy_g=None, mo_occ_g=None, moments_occ = None, moments_vir = None):
+    def convolve(
+        self,
+        eta,
+        eta_orders=None,
+        mo_energy_g=None,
+        mo_occ_g=None,
+        moments_occ=None,
+        moments_vir=None,
+    ):
         """Handle the convolution of the moments of the Green's function and screened Coulomb
         interaction.
 
@@ -247,7 +247,7 @@ class dTDA(BaseSE):
             eta_orders = np.arange(self.nmom_max + 1)
         eta_orders = np.asarray(eta_orders)
 
-        for n in range(np.min(eta_orders),self.nmom_max + 1):
+        for n in range(np.min(eta_orders), self.nmom_max + 1):
             # Get the binomial coefficients
             fp = scipy.special.binom(n, eta_orders)
             fh = fp * (-1) ** eta_orders
@@ -328,9 +328,9 @@ class dTDA(BaseSE):
 
             # Construct the self-energy moments for this order only to
             # save memory
-            moments_occ, moments_vir = self.convolve(eta[:, None], eta_orders=[n],
-                                                     moments_occ=moments_occ,
-                                                     moments_vir=moments_vir)
+            moments_occ, moments_vir = self.convolve(
+                eta[:, None], eta_orders=[n], moments_occ=moments_occ, moments_vir=moments_vir
+            )
 
         return moments_occ, moments_vir
 

@@ -82,7 +82,7 @@ class dTDA(MoldTDA):
         n : int
             Moment order to be built.
         q : int
-            Index associated with a difference in k-points
+            Index associated with a difference in k-points.
         recursion_term : numpy.ndarray, optional
             Previous recursion term required to build the next moment. In the case of TDA this is
             the previous density-density response.
@@ -120,7 +120,7 @@ class dTDA(MoldTDA):
                     f"To build the {n}th dd-moment, a recursion_term must be provided"
                 )
             kpts = self.kpts
-            naux = Lia[0,kpts.member(kpts.wrap_around(kpts[q] + kpts[0]))].shape[0]
+            naux = Lia[0, kpts.member(kpts.wrap_around(kpts[q] + kpts[0]))].shape[0]
             tmp = np.zeros((naux, naux), dtype=complex)
             for ki in kpts.loop(1, mpi=True):
                 ka = kpts.member(kpts.wrap_around(kpts[q] + kpts[ki]))
@@ -132,7 +132,7 @@ class dTDA(MoldTDA):
             for kj in kpts.loop(1, mpi=True):
                 kb = kpts.member(kpts.wrap_around(kpts[q] + kpts[kj]))
                 recursion_term[q, kb] = recursion_term[q, kb] * self.d[q, kb].ravel()[None]
-                recursion_term[q, kb] += np.dot(tmp, Lia[kj, kb]) #.conj()
+                recursion_term[q, kb] += np.dot(tmp, Lia[kj, kb])  # .conj()
 
                 eta_aux += np.dot(recursion_term[q, kb], Lia[kj, kb].T.conj())
             del tmp
@@ -294,7 +294,46 @@ class dTDA(MoldTDA):
 
         return moments_occ, moments_vir
 
-    def convolve_inline(self, eta, kp, kx, eta_orders=None, mo_energy_g=None, mo_occ_g=None, moments_occ=None, moments_vir=None):
+    def convolve_inline(
+        self,
+        eta,
+        kp,
+        kx,
+        eta_orders=None,
+        mo_energy_g=None,
+        mo_occ_g=None,
+        moments_occ=None,
+        moments_vir=None,
+    ):
+        """Handle the convolution of the moments of the Green's function and screened Coulomb
+        interaction for a single k-point.
+
+        Parameters
+        ----------
+        eta : numpy.ndarray
+            Moments of the density-density response partly transformed
+            into moments of the screened Coulomb interaction at each
+            k-point.
+        kp, kx : int
+            Two indices associated with a difference in k-points.
+        mo_energy_g : numpy.ndarray, optional
+            Energies of the Green's function at each k-point. If
+            `None`, use `self.mo_energy_g`. Default value is `None`.
+        mo_occ_g : numpy.ndarray, optional
+            Occupancies of the Green's function at each k-point. If
+            `None`, use `self.mo_occ_g`. Default value is `None`.
+        moments_occ : numpy.ndarray, optional
+            Moments of the occupied self-energy at each k-point.
+        moments_vir : numpy.ndarray, optional
+            Moments of the virtual self-energy at each k-point.
+
+        Returns
+        -------
+        moments_occ : numpy.ndarray
+            Moments of the occupied self-energy at each k-point.
+        moments_vir : numpy.ndarray
+            Moments of the virtual self-energy at each k-point.
+        """
         # Get the orbitals
         if mo_energy_g is None:
             mo_energy_g = self.mo_energy_g
@@ -326,7 +365,7 @@ class dTDA(MoldTDA):
             eta_orders = np.arange(self.nmom_max + 1)
         eta_orders = np.asarray(eta_orders)
 
-        for n in range(np.min(eta_orders),self.nmom_max + 1):
+        for n in range(np.min(eta_orders), self.nmom_max + 1):
             # Get the binomial coefficients
             fp = scipy.special.binom(n, eta_orders)
             fh = fp * (-1) ** eta_orders
@@ -343,10 +382,9 @@ class dTDA(MoldTDA):
             moments_vir[kp, n] += fproc(tv)
         return moments_occ, moments_vir
 
-
     @logging.with_timer("Self-energy moments")
     @logging.with_status("Constructing self-energy moments")
-    def build_se_moments(self, moments_dd=None, Lia = None):
+    def build_se_moments(self, moments_dd=None, Lia=None):
         """Build the moments of the self-energy via convolution.
 
         Parameters
@@ -372,12 +410,12 @@ class dTDA(MoldTDA):
         else:
             pqchar, pchar, qchar = "pq", "p", "q"
             eta_shape = lambda k: (self.mo_energy_g[k].size, self.nmom_max + 1, self.nmo, self.nmo)
+        subscript = f"P{pchar},Q{qchar},PQ->{pqchar}"
 
         if self.d is None:
             self._build_d()
 
         if self.fsc is not None:
-            q0 = (6 * np.pi**2 / (kpts.cell.vol * self.nkpts)) ** (1 / 3)
             eta_aux_nB = None
 
         # Initialise the moments
@@ -392,7 +430,7 @@ class dTDA(MoldTDA):
                 integrals.get_Lpx_q(q)
             for n in range(self.nmom_max + 1):
                 if moments_dd is None:
-                    if n==0:
+                    if n == 0:
                         zeroth_mom = self.build_zeroth_dd_moment(q)
                         recursion_term = np.zeros_like(zeroth_mom)
                     recursion_term, eta_aux = self.build_nth_dd_moment(
@@ -407,7 +445,7 @@ class dTDA(MoldTDA):
                     eta_aux = mpi_helper.allreduce(eta_aux)
                     eta_aux *= 2.0 / self.nkpts
 
-                if self.fsc is not None and q==0 and "B" not in self.fsc:
+                if self.fsc is not None and q == 0 and "B" not in self.fsc:
                     if n == 0:
                         zeroth_mom_nB = self.build_zeroth_dd_moment(q, Lia=self.integrals.Mia)
                         recursion_term_nB = np.zeros_like(zeroth_mom_nB)
@@ -423,20 +461,26 @@ class dTDA(MoldTDA):
 
                     for x in range(self.mo_energy_g[kx].size):
                         Lp = self.integrals.Lpx[kp, kx][:, :, x]
-                        subscript = f"P{pchar},Q{qchar},PQ->{pqchar}"
-                        if q==0 and self.fsc is not None:
+                        if q == 0 and self.fsc is not None:
                             wing_tmp = util.einsum(
-                                    f"P,P{pchar}{qchar}->{pqchar}",
-                                    eta_aux[0, 1:],
-                                    self.integrals.Lpx[kp, kx],
-                                )
-                            eta = self.get_fsc_terms(eta_aux, eta, Lp,  q0, x, n, subscript, wing_tmp, eta_aux_nB)
+                                f"P,P{pchar}{qchar}->{pqchar}",
+                                eta_aux[0, 1:],
+                                self.integrals.Lpx[kp, kx],
+                            )
+                            eta = self.get_fsc_terms(
+                                eta_aux, eta, Lp, x, n, subscript, wing_tmp, eta_aux_nB
+                            )
                         else:
                             eta[x, n] += util.einsum(subscript, Lp, Lp.conj(), eta_aux)
 
-                    moments_occ, moments_vir = self.convolve_inline(eta, kp, kx, eta_orders=[n],
-                                                                    moments_occ=moments_occ,
-                                                                    moments_vir=moments_vir)
+                    moments_occ, moments_vir = self.convolve_inline(
+                        eta,
+                        kp,
+                        kx,
+                        eta_orders=[n],
+                        moments_occ=moments_occ,
+                        moments_vir=moments_vir,
+                    )
 
         # Construct the self-energy moments
         moments_occ, moments_vir = self.hermiticity_correction(moments_occ, moments_vir)
@@ -449,7 +493,24 @@ class dTDA(MoldTDA):
 
         return moments_occ, moments_vir
 
-    def hermiticity_correction(self,moments_occ, moments_vir):
+    def hermiticity_correction(self, moments_occ, moments_vir):
+        """Correction for small errors in the hermiticty of the moments due to the numerical
+        integration.
+
+        Parameters
+        ----------
+        moments_occ : numpy.ndarray
+            Moments of the occupied self-energy at each k-point.
+        moments_vir : numpy.ndarray
+            Moments of the virtual self-energy at each k-point.
+
+        Returns
+        -------
+        moments_occ : numpy.ndarray
+            Moments of the occupied self-energy at each k-point.
+        moments_vir : numpy.ndarray
+            Moments of the virtual self-energy at each k-point.
+        """
         # Numerical integration can lead to small non-hermiticity
         for n in range(self.nmom_max + 1):
             for k in self.kpts.loop(1):
@@ -457,31 +518,63 @@ class dTDA(MoldTDA):
                 moments_vir[k, n] = 0.5 * (moments_vir[k, n] + moments_vir[k, n].T.conj())
         return moments_occ, moments_vir
 
-    def get_fsc_terms(self, eta_aux, eta, Lp,  q0, x, n, subscript, wing_tmp, eta_aux_nB=None):
+    def get_fsc_terms(self, eta_aux, eta, Lp, x, n, subscript, wing_tmp, eta_aux_nB=None):
+        """Construct the Head, Wings and Body corrections.
+
+        Parameters
+        ----------
+        eta : numpy.ndarray
+            Moments of the density-density response at a k-point difference.
+        eta : numpy.ndarray
+            Moments of the density-density response partly transformed
+            into moments of the screened Coulomb interaction at each
+            k-point.
+        Lp : numpy.ndarray
+            A single k-point ``(aux, MO)`` array at a chosen ``x``.
+        x : int
+            Index of ``(MO)`` .
+        n : int
+            Index of current moment.
+        subscript : str
+            Einsum shape depending on whether it is a diagonal calculation.
+        wing_tmp : numpy.ndarray
+            Calculated wing term.
+        eta_aux_nB: numpy.ndarray
+            Moments of the density-density response at a k-point difference without the plane wave
+            approximation.
+
+        Returns
+        -------
+        eta : numpy.ndarray
+            Moments of the density-density response partly transformed
+            into moments of the screened Coulomb interaction at each
+            k-point.
+        """
+        q0 = (6 * np.pi**2 / (self.kpts.cell.vol * self.nkpts)) ** (1 / 3)
+
         if "B" not in self.fsc:
             eta[x, n] += util.einsum(subscript, Lp, Lp.conj(), eta_aux_nB)
         else:
-            eta[x, n] += util.einsum(subscript, Lp, Lp.conj(), eta_aux[1:,1:])
+            eta[x, n] += util.einsum(subscript, Lp, Lp.conj(), eta_aux[1:, 1:])
 
         if "H" in self.fsc:
             if self.gw.diagonal_se:
                 eta[x, n][x] += (2 / np.pi) * q0 * eta_aux[0, 0] * self.nkpts
             else:
                 eta[x, n][x, x] += (2 / np.pi) * q0 * eta_aux[0, 0] * self.nkpts
+
         if "W" in self.fsc:
-            # wing_tmp = util.einsum("P,Pp->p",  eta_aux[0, 1:], Lp)
             wing_tmp = (
-                               (q0 ** 2) * ((self.kpts.cell.vol / (4 * np.pi ** 3)) ** (1 / 2))
-                       ) * wing_tmp.real * self.nkpts
+                ((q0**2) * ((self.kpts.cell.vol / (4 * np.pi**3)) ** (1 / 2)))
+                * wing_tmp.real
+                * self.nkpts
+            )
             if self.gw.diagonal_se:
                 eta[x, n][x] -= 2 * wing_tmp[x]
             else:
-                # print("wings", wing_tmp.T[x, :] / eta[x, n][x, :])
                 eta[x, n][x, :] -= wing_tmp.T[x, :]
                 eta[x, n][:, x] -= wing_tmp[:, x]
         return eta
-
-
 
     @functools.cached_property
     def nov(self):

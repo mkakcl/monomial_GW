@@ -5,7 +5,7 @@ Examples of finite size corrections for `momentGW` calculations for periodic sol
 import numpy as np
 from pyscf.pbc import dft, gto
 
-from momentGW import KGW, KUGW
+from momentGW import KGW
 
 # Define a unit cell
 cell = gto.Cell()
