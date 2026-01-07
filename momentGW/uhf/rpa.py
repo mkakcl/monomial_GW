@@ -73,7 +73,7 @@ class dRPA(dTDA, RdRPA):
         )
 
         quad = self.optimise_main_quad(d, diag_eri, name="Combined ERI")
-        integral = self.eval_main_integral(quad, d, Lia=Lia, spin=True)
+        integral = self.eval_main_integral(quad, d, Lia=Lia, include_spin_factor=True)
 
         # Report quadrature errors
         if self.report_quadrature_error:
@@ -112,8 +112,13 @@ class dRPA(dTDA, RdRPA):
             Previous recursion term required to build the next moment. In the case of RPA this is
             the appropriate [(A+B)(A-B)]^(n-2/2) for the nth moment. These are only calculated on
             even moments, odd moments use the previous even moment value.
-        zeroth moment : numpy.ndarray, optional
+        zeroth_mom : numpy.ndarray, optional
             Zeroth moment of the density-density response.
+        Lia : numpy.ndarray, optional
+            Combined (aux, occ, vir) integral array for both spin channels.
+            Expected shape is `(naux, nocc_α * nvir_α + nocc_β * nvir_β)`.
+            If `None`, concatenate `self.integrals[0].Lia` and `self.integrals[1].Lia`.
+            Default value is `None`.
 
         Returns
         -------
@@ -152,15 +157,14 @@ class dRPA(dTDA, RdRPA):
 
         Parameters
         ----------
-        integral : tuple of numpy.ndarray, optional
-            Integral array, include the offset part, for each spin
-            channel. If `None`, calculate from scratch. Default value is
-            `None`.
+        integral : numpy.ndarray, optional
+            Zeroth moment integral array combining both spin channels.
+            If `None`, calculate from scratch. Default value is `None`.
 
         Returns
         -------
-        moments : tuple of numpy.ndarray
-            Moments of the density-density response.
+        moments : numpy.ndarray
+            Moments of the density-density response combining both spin channels.
         """
 
         # Construct energy differences

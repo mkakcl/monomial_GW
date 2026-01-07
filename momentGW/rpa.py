@@ -330,20 +330,24 @@ class dRPA(dTDA):
 
         return integral
 
-    def eval_main_integral(self, quad, d=None, Lia=None, spin=False):
+    def eval_main_integral(self, quad, d=None, Lia=None, include_spin_factor=False):
         """Evaluate the main integral.
 
         Parameters
         ----------
         quad : tuple
             The quadrature points and weights.
-        Lia : numpy.ndarray
+        d : numpy.ndarray, optional
+            Orbital energy differences. If `None`, use `self.d`.
+            Default value is `None`.
+        Lia : numpy.ndarray, optional
             The (aux, W occ, W vir) integral array. If `None`, use
             `self.integrals.Lia`. Keyword argument allows for the use of
             this function with `uhf` and `pbc` modules.
-        spin : bool
-            A boolean operator to control whether an extra factor of 2
-            is included to account for the two spin states.
+        include_spin_factor : bool, optional
+            If `True`, use spin factor of 2 (for unrestricted with combined
+            spin channels). If `False`, use spin factor of 4 (for restricted).
+            Default value is `False`.
 
         Returns
         -------
@@ -355,7 +359,7 @@ class dRPA(dTDA):
         if d is None:
             d = self.d
 
-        if spin:
+        if include_spin_factor:
             spin_factor = 2.0
         else:
             spin_factor = 4.0
@@ -367,6 +371,7 @@ class dRPA(dTDA):
         # Initialise the integral
         dim = 3 if self.report_quadrature_error else 1
         integral = np.zeros((dim, naux, nov))
+        integral[:] += Lia
 
         # Calculate the integral for each point
         for i, (point, weight) in enumerate(zip(*quad)):
