@@ -106,7 +106,6 @@ class Test_KGW(unittest.TestCase):
 
         self._test_vs_supercell(gw, kgw, full=True)
 
-
     def test_dtda_HW_regression(self):
         nmom_max = 5
         kgw = KGW(self.mf)
