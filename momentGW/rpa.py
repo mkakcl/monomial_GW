@@ -371,7 +371,6 @@ class dRPA(dTDA):
         # Initialise the integral
         dim = 3 if self.report_quadrature_error else 1
         integral = np.zeros((dim, naux, nov))
-        integral[:] += Lia
 
         # Calculate the integral for each point
         for i, (point, weight) in enumerate(zip(*quad)):
