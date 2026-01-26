@@ -12,6 +12,7 @@ from scipy.linalg import cholesky
 from momentGW import logging, mpi_helper, util
 from momentGW.ints import Integrals, require_compression_metric
 
+import tracemalloc
 
 class KIntegrals(Integrals):
     """Container for the integrals required for KGW methods.
@@ -215,6 +216,8 @@ class KIntegrals(Integrals):
 
         def _ao2mo_e2(Lpq, mo_coeff, orb_slice, out=None):
             mo_coeff = np.asarray(mo_coeff, order="F")
+            if Lpq.flags.f_contiguous:
+                Lpq = np.ascontiguousarray(Lpq)
             if np.iscomplexobj(Lpq):
                 out = _ao2mo.r_e2(Lpq, mo_coeff, orb_slice, tao, ao_loc=None, aosym="s1", out=out)
             else:
@@ -436,6 +439,7 @@ class KIntegrals(Integrals):
         rot : numpy.ndarray
             Rotation matrix into the compressed auxiliary space.
         """
+        print(f"Pre Lia", tracemalloc.get_traced_memory())
         nmo = self.nmo
         nmo_g = self.nmo_g
         naux = self.naux
@@ -446,9 +450,12 @@ class KIntegrals(Integrals):
             # Get the compression metric
             rot = self.rot_check(naux)
 
+        print(f"Post rot", tracemalloc.get_traced_memory())
+
         for ki in self.kpts.loop(1, mpi=True):
             # Note this is different to Lia.
             kj = self.kpts.member(self.kpts.wrap_around(self.kpts[ki] - self.kpts[q]))
+            print(f"initialise {ki}", tracemalloc.get_traced_memory())
             Lpx_k = np.zeros((naux[q], nmo, nmo_g[kj]), dtype=complex)
             b1 = 0
             for block in self.with_df.sr_loop((ki, kj), compact=False):  # TODO lock I/O
@@ -466,6 +473,8 @@ class KIntegrals(Integrals):
                     tmp = self.get__ao2mo_e2(block_comp, coeffs, orb_slice)
                     Lpx_k += tmp.reshape(Lpx_k.shape)
             Lpx[ki, kj] = Lpx_k
+            print("size", nmo, nmo + nmo_g[kj])
+            print(f"store {ki}", tracemalloc.get_traced_memory())
         Lpx["built_full"] = False
         self._blocks["Lpx"] = Lpx
 

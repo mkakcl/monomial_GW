@@ -17,6 +17,7 @@ def kernel(
     nmom_max,
     moments=None,
     integrals=None,
+    se_static=None,
 ):
     """Moment-constrained Fock matrix self-consistent GW.
 

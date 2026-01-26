@@ -11,6 +11,18 @@ from momentGW.pbc.fock import FockLoop, search_chempot_unconstrained
 from momentGW.pbc.ints import KIntegrals
 from momentGW.pbc.rpa import dRPA
 from momentGW.pbc.tda import dTDA
+from momentGW.pbc.thc_tda import dTDA as dTDA_THC
+
+import sys
+import tracemalloc
+
+def sizeof_fmt(num, suffix='B'):
+    ''' by Fred Cirera,  https://stackoverflow.com/a/1094933/1870254, modified'''
+    for unit in ['', 'Ki', 'Mi', 'Gi', 'Ti', 'Pi', 'Ei', 'Zi']:
+        if abs(num) < 1024.0:
+            return "%3.1f %s%s" % (num, unit, suffix)
+        num /= 1024.0
+    return "%.1f %s%s" % (num, 'Yi', suffix)
 
 
 class KGW(BaseKGW, GW):
@@ -158,7 +170,7 @@ class KGW(BaseKGW, GW):
             rpa = dRPA(self, nmom_max, integrals, fsc=self.fsc, **kwargs)
             return rpa.kernel()
         elif self.polarizability.lower() == "thc-dtda":
-            tda = thc.dTDA(self, nmom_max, integrals, **kwargs)
+            tda = dTDA_THC(self, nmom_max, integrals, **kwargs)
             return tda.kernel()
         else:
             raise NotImplementedError
@@ -188,6 +200,7 @@ class KGW(BaseKGW, GW):
         if self.polarizability.lower().startswith("thc"):
             cls = thc.KIntegrals
             kwargs = self.thc_opts
+            transform = True
         else:
             cls = KIntegrals
             kwargs = dict(
@@ -256,6 +269,7 @@ class KGW(BaseKGW, GW):
         """
 
         # Solve the Dyson equation for the moments
+        print("PRE MBLSE", tracemalloc.get_traced_memory())
         with logging.with_modifiers(status="Solving Dyson equation", timer="Dyson equation"):
             se = []
             for k in self.kpts.loop(1):
@@ -269,6 +283,7 @@ class KGW(BaseKGW, GW):
                 se.append(result.get_self_energy())
 
         # Initialise the solver
+        print("POST MBLSE", tracemalloc.get_traced_memory())
         solver = FockLoop(self, se=se, **self.fock_opts)
 
         # Shift the self-energy poles relative to the Green's function
@@ -277,6 +292,7 @@ class KGW(BaseKGW, GW):
             se = solver.auxiliary_shift(se_static)
 
         # Find the error in the moments
+        print("PRE ERROR", tracemalloc.get_traced_memory())
         error_h, error_p = zip(
             *(
                 self.moment_error(th, tp, s)
@@ -294,6 +310,7 @@ class KGW(BaseKGW, GW):
         gf, error = solver.solve_dyson(se_static)
         for i, g in enumerate(gf):
             se[i] = se[i].copy(chempot=g.chempot)
+        print("POST SOLVE", tracemalloc.get_traced_memory())
 
         # Self-consistently renormalise the density matrix
         if self.fock_loop:
@@ -312,6 +329,11 @@ class KGW(BaseKGW, GW):
         )
         logging.write(f"Error in number of electrons:  [{style}]{error:.3e}[/]")
         logging.write(f"Chemical potential (Γ):  {gf[0].chempot:.6f}")
+
+        for name, size in sorted(((name, sys.getsizeof(value)) for name, value in list(
+                locals().items())), key=lambda x: -x[1])[:10]:
+            print("{:>30}: {:>8}".format(name, sizeof_fmt(size)))
+        print("")
 
         return tuple(gf), tuple(se)
 
@@ -403,10 +425,14 @@ class KGW(BaseKGW, GW):
             integrals = self.ao2mo()
 
         # Find the Fock matrix
+        h1e = np.zeros((self.nkpts, self.nmo, self.nmo), dtype=complex)
         with util.SilentSCF(self._scf):
-            h1e = util.einsum(
-                "kpq,kpi,kqj->kij", self._scf.get_hcore(), self.mo_coeff.conj(), self.mo_coeff
-            )
+            hcore = self._scf.get_hcore()
+        for k in self.kpts.loop(1):
+
+                h1e[k] = util.einsum(
+                    "pq,pi,qj->ij", hcore[k], self.mo_coeff[k].conj(), self.mo_coeff[k]
+                )
         rdm1 = self.make_rdm1()
         fock = integrals.get_fock(rdm1, h1e, **kwargs)
 

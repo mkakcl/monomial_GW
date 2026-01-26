@@ -18,6 +18,7 @@ def kernel(
     nmom_max,
     moments=None,
     integrals=None,
+    se_static=None,
 ):
     """Moment-constrained quasiparticle self-consistent GW.
 

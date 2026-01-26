@@ -15,6 +15,7 @@ def kernel(
     nmom_max,
     moments=None,
     integrals=None,
+    se_static=None,
 ):
     """Moment-constrained eigenvalue self-consistent GW.
 

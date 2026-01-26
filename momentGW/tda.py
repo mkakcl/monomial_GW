@@ -3,10 +3,14 @@
 import numpy as np
 import scipy.special
 from pyscf import lib
+from scipy.optimize import toms748
 
 from momentGW import logging, mpi_helper, util
 from momentGW.base import BaseSE
 
+import tracemalloc
+import time
+from momentGW import metrics
 
 class dTDA(BaseSE):
     """Compute the self-energy moments using dTDA.
@@ -184,95 +188,83 @@ class dTDA(BaseSE):
 
     @logging.with_timer("Moment convolution")
     @logging.with_status("Convoluting moments")
-    def convolve(
+    def convolve_inline(
         self,
         eta,
-        eta_orders=None,
+        moments_occ,
+        moments_vir,
+        current_n,
         mo_energy_g=None,
         mo_occ_g=None,
-        moments_occ=None,
-        moments_vir=None,
     ):
-        """Handle the convolution of the moments of the Green's function and screened Coulomb
-        interaction.
+            """
+            Handle the convolution of the moments of the Green's function
+            and screened Coulomb interaction.
 
-        Parameters
-        ----------
-        eta : numpy.ndarray
-            Moments of the density-density response partly transformed
-            into moments of the screened Coulomb interaction.
-        mo_energy_g : numpy.ndarray, optional
-            Energies of the Green's function. If `None`, use
-            `self.mo_energy_g`. Default value is `None`.
-        eta_orders : list, optional
-            List of orders for the rotated density-density moments in
-            `eta`. If `None`, assume it spans all required orders.
-            Default value is `None`.
-        mo_occ_g : numpy.ndarray, optional
-            Occupancies of the Green's function. If `None`, use
-            `self.mo_occ_g`. Default value is `None`.
+            Parameters
+            ----------
+            eta : numpy.ndarray
+                Moments of the density-density response partly transformed
+                into moments of the screened Coulomb interaction.
+            mo_energy_g : numpy.ndarray, optional
+                Energies of the Green's function. If `None`, use
+                `self.mo_energy_g`. Default value is `None`.
+            eta_orders : list, optional
+                List of orders for the rotated density-density moments in
+                `eta`. If `None`, assume it spans all required orders.
+                Default value is `None`.
+            mo_occ_g : numpy.ndarray, optional
+                Occupancies of the Green's function. If `None`, use
+                `self.mo_occ_g`. Default value is `None`.
 
-        Returns
-        -------
-        moments_occ : numpy.ndarray
-            Moments of the occupied self-energy.
-        moments_vir : numpy.ndarray
-            Moments of the virtual self-energy.
-        """
+            Returns
+            -------
+            moments_occ : numpy.ndarray
+                Moments of the occupied self-energy.
+            moments_vir : numpy.ndarray
+                Moments of the virtual self-energy.
+            """
 
-        # Get the orbitals
-        if mo_energy_g is None:
-            mo_energy_g = self.mo_energy_g
-        if mo_occ_g is None:
-            mo_occ_g = self.mo_occ_g
+            # Get the orbitals
+            if mo_energy_g is None:
+                mo_energy_g = self.mo_energy_g
+            if mo_occ_g is None:
+                mo_occ_g = self.mo_occ_g
 
-        # Setup dependent on diagonal SE
-        q0, q1 = self.mpi_slice(mo_energy_g.size)
-        if self.gw.diagonal_se:
-            pq = "p"
-            fproc = lambda x: np.diag(x)
-        else:
-            pq = "pq"
-            fproc = lambda x: x
+            # Setup dependent on diagonal SE
+            q0, q1 = self.mpi_slice(mo_energy_g.size)
+            if self.gw.diagonal_se:
+                fproc = lambda x: np.diag(x)
+            else:
+                fproc = lambda x: x
 
-        # Initialise the moments
-        nmo = eta.shape[-1]  # avoiding self.nmo for inheritence
-        if moments_occ is None:
-            moments_occ = np.zeros((self.nmom_max + 1, nmo, nmo))
-        if moments_vir is None:
-            moments_vir = np.zeros((self.nmom_max + 1, nmo, nmo))
+            fp = scipy.special.binom(np.arange(current_n, self.nmom_max + 1), current_n)
+            # Get the orders for the moments
+            eo_len = np.sum(mo_occ_g > 0)
+            prefactors = np.power.outer(mo_energy_g[q0:q1],
+                                        np.arange(self.nmom_max + 1 - current_n))
+            prefactors = np.multiply(prefactors, fp)
+            if q1 > eo_len:
+                prefactors[:eo_len] *= (-1) ** current_n
 
-        # Get the orders for the moments
-        if eta_orders is None:
-            eta_orders = np.arange(self.nmom_max + 1)
-        eta_orders = np.asarray(eta_orders)
+            for x in range(q1 - q0):
+                if x < eo_len:
+                    for n in range(current_n, self.nmom_max + 1):
+                        moments_occ[n] += fproc(prefactors[x,n-current_n]*eta[x])
 
-        for n in range(np.min(eta_orders), self.nmom_max + 1):
-            # Get the binomial coefficients
-            fp = scipy.special.binom(n, eta_orders)
-            fh = fp * (-1) ** eta_orders
+                else:
+                    for n in range(current_n, self.nmom_max + 1):
+                        moments_vir[n] += fproc(prefactors[x,n-current_n]*eta[x])
 
-            # Construct the occupied moments for this order
-            if np.any(mo_occ_g[q0:q1] > 0):
-                eo = np.power.outer(mo_energy_g[q0:q1][mo_occ_g[q0:q1] > 0], n - eta_orders)
-                to = util.einsum(f"t,kt,kt{pq}->{pq}", fh, eo, eta[mo_occ_g[q0:q1] > 0])
-                moments_occ[n] += fproc(to)
+            # Sum over all processes
+            moments_occ = mpi_helper.allreduce(moments_occ)
+            moments_vir = mpi_helper.allreduce(moments_vir)
 
-            # Construct the virtual moments for this order
-            if np.any(mo_occ_g[q0:q1] == 0):
-                ev = np.power.outer(mo_energy_g[q0:q1][mo_occ_g[q0:q1] == 0], n - eta_orders)
-                tv = util.einsum(f"t,ct,ct{pq}->{pq}", fp, ev, eta[mo_occ_g[q0:q1] == 0])
-                moments_vir[n] += fproc(tv)
+            # Numerical integration can lead to small non-hermiticity
+            moments_occ = 0.5 * (moments_occ + moments_occ.swapaxes(1, 2).conj())
+            moments_vir = 0.5 * (moments_vir + moments_vir.swapaxes(1, 2).conj())
 
-        # Sum over all processes
-        moments_occ = mpi_helper.allreduce(moments_occ)
-        moments_vir = mpi_helper.allreduce(moments_vir)
-
-        # Numerical integration can lead to small non-hermiticity
-        moments_occ = 0.5 * (moments_occ + moments_occ.swapaxes(1, 2).conj())
-        moments_vir = 0.5 * (moments_vir + moments_vir.swapaxes(1, 2).conj())
-
-        return moments_occ, moments_vir
+            return moments_occ, moments_vir
 
     @logging.with_timer("Self-energy moments")
     @logging.with_status("Constructing self-energy moments")
@@ -295,7 +287,9 @@ class dTDA(BaseSE):
         if "Lia" not in self.integrals._blocks:
             self.integrals.transform()
 
-        # Setup dependent on diagonal SE
+        if self.d is None:
+            self._build_d()
+
         q0, q1 = self.mpi_slice(self.mo_energy_g.size)
         if self.gw.diagonal_se:
             eta = np.zeros((q1 - q0, self.nmo))
@@ -304,33 +298,61 @@ class dTDA(BaseSE):
             eta = np.zeros((q1 - q0, self.nmo, self.nmo))
             pq, p, q = "pq", "p", "q"
 
-        if self.d is None:
-            self._build_d()
-
         if moments_dd is None:
+            t20 = time.time()
             zeroth_mom = self.build_zeroth_dd_moment(m0=m0)
+            t21 = time.time()
+            dt = t21 - t20
+            print("Time for zeroth moment", dt)
+            metrics.record("dTDA zeroth moment", dt)
             recursion_term = None
 
         # Initialise output moments
         moments_occ = np.zeros((self.nmom_max + 1, self.nmo, self.nmo))
         moments_vir = np.zeros((self.nmom_max + 1, self.nmo, self.nmo))
+        total_dd_time = 0
+        total_orb_trans = 0
+        total_convolve_time = 0
 
         # Get the moments in (aux|aux) and rotate to (mo|mo)
         for n in range(self.nmom_max + 1):
+            t1 = time.time()
             if moments_dd is None:
                 recursion_term, eta_aux = self.build_nth_dd_moment(n, recursion_term, zeroth_mom)
             else:
                 eta_aux = np.dot(moments_dd[n], self.integrals.Lia.T)  # aux^2 o v
             eta_aux = mpi_helper.allreduce(eta_aux)
+            t2 = time.time()
+            total_dd_time += t2 - t1
+
+            t5 = time.time()
             for x in range(q1 - q0):
                 Lp = self.integrals.Lpx[:, :, x]
                 eta[x] = util.einsum(f"P{p},Q{q},PQ->{pq}", Lp, Lp, eta_aux) * 2.0
+            # eta = util.einsum(f"P{p}x,Q{q}x,PQ->{pq}x", self.integrals.Lpx, self.integrals.Lpx, eta_aux * 2.0)
+            t6 = time.time()
+            total_orb_trans += t6 - t5
 
             # Construct the self-energy moments for this order only to
             # save memory
-            moments_occ, moments_vir = self.convolve(
-                eta[:, None], eta_orders=[n], moments_occ=moments_occ, moments_vir=moments_vir
+            t3 = time.time()
+            moments_occ, moments_vir = self.convolve_inline(
+                eta, moments_occ=moments_occ, moments_vir=moments_vir, current_n=n,
             )
+            t4 = time.time()
+            total_convolve_time += t4 - t3
+        print("")
+        print("Total dd time", total_dd_time)
+        print("Total orbital transform time", total_orb_trans)
+        print("Total convolve time", total_convolve_time)
+        metrics.record("total dd time", total_dd_time)
+        metrics.record("total orbital transform time", total_orb_trans)
+        metrics.record("total convolve time", total_convolve_time)
+
+        SE_memory = tracemalloc.get_traced_memory()[1]
+        print("end of SE memory", tracemalloc.get_traced_memory())
+        metrics.record("SE memory", SE_memory)
+        print("")
 
         return moments_occ, moments_vir
 

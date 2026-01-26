@@ -7,7 +7,10 @@ import scipy.special
 
 from momentGW import logging, mpi_helper, util
 from momentGW.tda import dTDA as MoldTDA
+from momentGW import metrics
 
+import tracemalloc
+import time
 
 class dTDA(MoldTDA):
     """Compute the self-energy moments using dTDA with periodic boundary conditions.
@@ -296,14 +299,14 @@ class dTDA(MoldTDA):
 
     def convolve_inline(
         self,
-        eta,
+        eta_aux,
         kp,
         kx,
-        eta_orders=None,
+        moments_occ,
+        moments_vir,
+        current_n,
         mo_energy_g=None,
         mo_occ_g=None,
-        moments_occ=None,
-        moments_vir=None,
     ):
         """Handle the convolution of the moments of the Green's function and screened Coulomb
         interaction for a single k-point.
@@ -342,45 +345,58 @@ class dTDA(MoldTDA):
 
         # Setup dependent on diagonal SE
         if self.gw.diagonal_se:
-            pqchar = "p"
             fproc = lambda x: np.diag(x)
         else:
-            pqchar = "pq"
             fproc = lambda x: x
 
-        # We avoid self.nmo for inheritence reasons, but in MPI eta is
-        # sparse, hence this weird code
-        for part in eta.ravel():
-            if isinstance(part, np.ndarray):
-                nmo = part.shape[-1]
-                break
+        fp = scipy.special.binom(np.arange(current_n, self.nmom_max + 1), current_n)
+        # Get the orders for the moments
+        eo_len = np.sum(mo_occ_g[kx] > 0)
+        prefactors = np.power.outer(mo_energy_g[kx],
+                                    np.arange(self.nmom_max + 1 - current_n))
+        prefactors = np.multiply(prefactors, fp)
+        prefactors[:eo_len] *= (-1) ** current_n
 
-        # Initialise the moments
-        if moments_occ is None:
-            moments_occ = np.zeros((self.nkpts, self.nmom_max + 1, nmo, nmo), dtype=complex)
-        if moments_vir is None:
-            moments_vir = np.zeros((self.nkpts, self.nmom_max + 1, nmo, nmo), dtype=complex)
+        # eta = np.zeros(eta_shape(kx), dtype=eta_aux.dtype)
+        #
+        # for x in range(self.mo_energy_g[kx].size):
+        #     Lp = self.integrals.Lpx[kp, kx][:, :, x]
+        #     # Lpx = self.integrals.Lpx[kp, kx]
+        #     if q == 0 and self.fsc is not None:
+        #         wing_tmp = util.einsum(
+        #             f"P,P{pchar}{qchar}->{pqchar}",
+        #             eta_aux[0, 1:],
+        #             self.integrals.Lpx[kp, kx],
+        #         )
+        #         eta = self.get_fsc_terms(
+        #             eta_aux, eta, Lp, x, n, subscript, wing_tmp, eta_aux_nB
+        #         )
+        #     else:
+        #         eta[x] += util.einsum(subscript, Lp, Lp.conj(), eta_aux)
+        # pass
+        # eta += util.einsum(f"P{pchar}x,Q{qchar}x,PQ->x{pqchar}", Lpx.conj(), Lpx, eta_aux)
 
-        if eta_orders is None:
-            eta_orders = np.arange(self.nmom_max + 1)
-        eta_orders = np.asarray(eta_orders)
+        orbital_trans = 0
 
-        for n in range(np.min(eta_orders), self.nmom_max + 1):
-            # Get the binomial coefficients
-            fp = scipy.special.binom(n, eta_orders)
-            fh = fp * (-1) ** eta_orders
-            subscript = f"t,kt,kt{pqchar}->{pqchar}"
+        for x in range(self.mo_energy_g[kx].size):
+            t1 = time.time()
+            Lp = self.integrals.Lpx[kp, kx][:, :, x]
+            eta = util.einsum("Pp,PQ,Qq->pq", Lp.conj(), eta_aux,Lp)
+            t2 = time.time()
+            orbital_trans += t2-t1
+            del Lp
+            if x < eo_len:
+                for n in range(current_n, self.nmom_max + 1):
+                    moments_occ[kp,n] += fproc(prefactors[x, n - current_n] * eta) #eta[x]) #
 
-            # Construct the occupied moments for this order
-            eo = np.power.outer(mo_energy_g[kx][mo_occ_g[kx] > 0], n - eta_orders)
-            to = util.einsum(subscript, fh, eo, eta[mo_occ_g[kx] > 0])
-            moments_occ[kp, n] += fproc(to)
+            else:
+                for n in range(current_n, self.nmom_max + 1):
+                    moments_vir[kp,n] += fproc(prefactors[x, n - current_n] * eta) #eta[x]) #
 
-            # Construct the virtual moments for this order
-            ev = np.power.outer(mo_energy_g[kx][mo_occ_g[kx] == 0], n - eta_orders)
-            tv = util.einsum(subscript, fp, ev, eta[mo_occ_g[kx] == 0])
-            moments_vir[kp, n] += fproc(tv)
-        return moments_occ, moments_vir
+        del prefactors, fp
+        convolve_mem = tracemalloc.get_traced_memory()[1]
+        return orbital_trans, convolve_mem
+        #return moments_occ, moments_vir
 
     @logging.with_timer("Self-energy moments")
     @logging.with_status("Constructing self-energy moments")
@@ -406,10 +422,10 @@ class dTDA(MoldTDA):
         # Setup dependent on diagonal SE
         if self.gw.diagonal_se:
             pqchar = pchar = qchar = "p"
-            eta_shape = lambda k: (self.mo_energy_g[k].size, self.nmom_max + 1, self.nmo)
+            eta_shape = lambda k: (self.mo_energy_g[k].size, self.nmo)
         else:
             pqchar, pchar, qchar = "pq", "p", "q"
-            eta_shape = lambda k: (self.mo_energy_g[k].size, self.nmom_max + 1, self.nmo, self.nmo)
+            eta_shape = lambda k: (self.mo_energy_g[k].size, self.nmo, self.nmo)
         subscript = f"P{pchar},Q{qchar},PQ->{pqchar}"
 
         if self.d is None:
@@ -423,19 +439,43 @@ class dTDA(MoldTDA):
         moments_vir = np.zeros((self.nkpts, self.nmom_max + 1, self.nmo, self.nmo), dtype=complex)
 
         # Get the moments in (aux|aux) and rotate to (mo|mo)
+        dd_time = 0
+        convolve_time = 0
+        orbital_transformation = 0
+        convolve_mem = 0
+        zeroth_total_time = 0.0
+        dd_moments_mem = 0
+        t10 = time.time()
         for q in kpts.loop(1):
+
+            print("Processing q-point", q)
+            # if "Lpx" in integrals._blocks:
+            #     print(integrals._blocks["Lpx"].keys())
             if "Lia" not in integrals._blocks or not integrals._blocks["Lia"]["built_full"]:
                 integrals.get_Lia_q(q)
+            # print(f"post Lia", tracemalloc.get_traced_memory())
             if "Lpx" not in integrals._blocks or not integrals._blocks["Lpx"]["built_full"]:
                 integrals.get_Lpx_q(q)
+            # print(f"post Lpx", tracemalloc.get_traced_memory())
+            # print(integrals._blocks["Lia"].keys())
+            # print(integrals._blocks["Lpx"].keys())
             for n in range(self.nmom_max + 1):
                 if moments_dd is None:
+                    t3 = time.time()
                     if n == 0:
                         zeroth_mom = self.build_zeroth_dd_moment(q)
                         recursion_term = np.zeros_like(zeroth_mom)
+                        zeroth_mom_time = time.time() - t3
+                        # print(f"Zeroth moment time: {zeroth_mom_time}s")
                     recursion_term, eta_aux = self.build_nth_dd_moment(
                         n, q, recursion_term, zeroth_mom
                     )
+                    t4 = time.time()
+                    dd_time += t4 - t3
+                    moment_mem = tracemalloc.get_traced_memory()[1]
+                    dd_moments_mem = max(dd_moments_mem, moment_mem)
+                    tracemalloc.reset_peak()
+                    # print(f"Density-density moment time for n={n}: {t4 - t3}s")
                 else:
                     eta_aux = 0
                     for kj in kpts.loop(1, mpi=True):
@@ -444,6 +484,8 @@ class dTDA(MoldTDA):
 
                     eta_aux = mpi_helper.allreduce(eta_aux)
                     eta_aux *= 2.0 / self.nkpts
+
+                # print(f"post {n} dd moments", tracemalloc.get_traced_memory())
 
                 if self.fsc is not None and q == 0 and "B" not in self.fsc:
                     if n == 0:
@@ -457,30 +499,49 @@ class dTDA(MoldTDA):
                     kx = kpts.member(kpts.wrap_around(kpts[kp] - kpts[q]))
 
                     # if not isinstance(eta[kp, q], np.ndarray):
-                    eta = np.zeros(eta_shape(kx), dtype=eta_aux.dtype)
+                    # eta = np.zeros(eta_shape(kx), dtype=eta_aux.dtype)
+                    #
+                    # for x in range(self.mo_energy_g[kx].size):
+                    #     Lp = self.integrals.Lpx[kp, kx][:, :, x]
+                    #     # Lpx = self.integrals.Lpx[kp, kx]
+                    #     if q == 0 and self.fsc is not None:
+                    #         wing_tmp = util.einsum(
+                    #             f"P,P{pchar}{qchar}->{pqchar}",
+                    #             eta_aux[0, 1:],
+                    #             self.integrals.Lpx[kp, kx],
+                    #         )
+                    #         eta = self.get_fsc_terms(
+                    #             eta_aux, eta, Lp, x, n, subscript, wing_tmp, eta_aux_nB
+                    #         )
+                    #     else:
+                    #         eta[x] += util.einsum(subscript, Lp, Lp.conj(), eta_aux)
+                            # pass
+                    # eta += util.einsum(f"P{pchar}x,Q{qchar}x,PQ->x{pqchar}", Lpx.conj(), Lpx, eta_aux)
 
-                    for x in range(self.mo_energy_g[kx].size):
-                        Lp = self.integrals.Lpx[kp, kx][:, :, x]
-                        if q == 0 and self.fsc is not None:
-                            wing_tmp = util.einsum(
-                                f"P,P{pchar}{qchar}->{pqchar}",
-                                eta_aux[0, 1:],
-                                self.integrals.Lpx[kp, kx],
-                            )
-                            eta = self.get_fsc_terms(
-                                eta_aux, eta, Lp, x, n, subscript, wing_tmp, eta_aux_nB
-                            )
-                        else:
-                            eta[x, n] += util.einsum(subscript, Lp, Lp.conj(), eta_aux)
-
-                    moments_occ, moments_vir = self.convolve_inline(
-                        eta,
+                    # print(f"post {n} eta moments", tracemalloc.get_traced_memory())
+                    t1 = time.time()
+                    orbital_trans, convolve_mem_q = self.convolve_inline(
+                        eta_aux,
                         kp,
                         kx,
-                        eta_orders=[n],
-                        moments_occ=moments_occ,
-                        moments_vir=moments_vir,
+                        moments_occ,
+                        moments_vir,
+                        current_n=n,
                     )
+                    t2 = time.time()
+                    convolve_time += t2 - t1
+                    orbital_transformation += orbital_trans
+                    convolve_mem = max(convolve_mem, convolve_mem_q)
+                    # print(f"post {n} convolution", tracemalloc.get_traced_memory())
+
+            # print(f"end of {q} convolution", tracemalloc.get_traced_memory())
+            print("")
+            del zeroth_mom, recursion_term, eta_aux #, eta, Lp
+            if not integrals._blocks["Lia"]["built_full"]:
+                integrals._blocks["Lia"] = {"built_full":False}
+                integrals._blocks["Lpx"] = {"built_full":False}
+            print(f"end of {q} memory", tracemalloc.get_traced_memory())
+            print("")
 
         # Construct the self-energy moments
         moments_occ, moments_vir = self.hermiticity_correction(moments_occ, moments_vir)
@@ -490,6 +551,26 @@ class dTDA(MoldTDA):
         moments_vir = mpi_helper.allreduce(moments_vir)
 
         # moments_occ, moments_vir = self.convolve(eta)
+
+        t11 = time.time()
+        total_se_time = t11 - t10
+        print("Total SE time", total_se_time)
+        print("Total DD moment time", dd_time)
+        print("Total orbital transformations", orbital_transformation)
+        print("Total convolution time", convolve_time)
+        se_memory = tracemalloc.get_traced_memory()[1]
+        print("end of SE memory", se_memory)
+        print("Max convolution memory", convolve_mem)
+
+        # record metrics for pbc/tda run
+        metrics.record("total_se_time", float(total_se_time))
+        metrics.record("dd_moments_time", float(dd_time))
+        metrics.record("orbital_transformation_time", float(orbital_transformation))
+        metrics.record("convolution_time", float(convolve_time))
+        metrics.record("end_of_SE_memory", int(se_memory))
+        metrics.record("max_convolution_memory", int(convolve_mem))
+        metrics.record("zeroth_total_time", float(zeroth_total_time))
+        metrics.record("dd_moments_mem", int(dd_moments_mem))
 
         return moments_occ, moments_vir
 
@@ -553,15 +634,15 @@ class dTDA(MoldTDA):
         q0 = (6 * np.pi**2 / (self.kpts.cell.vol * self.nkpts)) ** (1 / 3)
 
         if "B" not in self.fsc:
-            eta[x, n] += util.einsum(subscript, Lp, Lp.conj(), eta_aux_nB)
+            eta[x] += util.einsum(subscript, Lp, Lp.conj(), eta_aux_nB)
         else:
-            eta[x, n] += util.einsum(subscript, Lp, Lp.conj(), eta_aux[1:, 1:])
+            eta[x] += util.einsum(subscript, Lp, Lp.conj(), eta_aux[1:, 1:])
 
         if "H" in self.fsc:
             if self.gw.diagonal_se:
-                eta[x, n][x] += (2 / np.pi) * q0 * eta_aux[0, 0] * self.nkpts
+                eta[x][x] += (2 / np.pi) * q0 * eta_aux[0, 0] * self.nkpts
             else:
-                eta[x, n][x, x] += (2 / np.pi) * q0 * eta_aux[0, 0] * self.nkpts
+                eta[x][x, x] += (2 / np.pi) * q0 * eta_aux[0, 0] * self.nkpts
 
         if "W" in self.fsc:
             wing_tmp = (
@@ -570,10 +651,10 @@ class dTDA(MoldTDA):
                 * self.nkpts
             )
             if self.gw.diagonal_se:
-                eta[x, n][x] -= 2 * wing_tmp[x]
+                eta[x][x] -= 2 * wing_tmp[x]
             else:
-                eta[x, n][x, :] -= wing_tmp.T[x, :]
-                eta[x, n][:, x] -= wing_tmp[:, x]
+                eta[x][x, :] -= wing_tmp.T[x, :]
+                eta[x][:, x] -= wing_tmp[:, x]
         return eta
 
     @functools.cached_property

@@ -8,6 +8,7 @@ import numpy as np
 from momentGW import logging, mpi_helper, util
 from momentGW.logging import init_logging
 
+import tracemalloc
 
 class Base:
     """Base class."""
@@ -126,7 +127,10 @@ class Base:
                         table.add_row(key, arr)
                     elif callable(val) or isinstance(val, type):
                         # Format functions and classes
-                        table.add_row(key, val.__name__)
+                        try:
+                            table.add_row(key, val.__name__)
+                        except:
+                            pass
                     else:
                         # Format everything else using repr
                         table.add_row(key, repr(val))
@@ -389,6 +393,7 @@ class BaseGW(Base):
         transform=True,
         thc_opts=OrderedDict(
             file_path=None,
+            cholesky_tol=1e-6,
         ),
     )
 
@@ -552,11 +557,15 @@ class BaseGW(Base):
             msg = f"{self.name} [bad]did not converge[/] in {timer.format_time(timer.total())}."
 
         # Build the table
+        # print("Pre table memory", tracemalloc.get_traced_memory())
         table = logging._Table.grid()
         table.add_row(msg)
         table.add_row("")
-        table.add_row(self._get_energies_table(integrals))
-        table.add_row("")
+        # print("Pre energy memory", tracemalloc.get_traced_memory())
+        if False:
+            table.add_row(self._get_energies_table(integrals))
+            table.add_row("")
+        # print("Pre excitation memory", tracemalloc.get_traced_memory())
         table.add_row(self._get_excitations_table())
 
         # Build the panel
@@ -589,6 +598,7 @@ class BaseGW(Base):
         nmom_max,
         moments=None,
         integrals=None,
+        se_static=None,
     ):
         """Driver for the method.
 
@@ -638,11 +648,16 @@ class BaseGW(Base):
                 nmom_max,
                 integrals=integrals,
                 moments=moments,
+                se_static=se_static,
             )
         logging.write("", comment=f"End of {self.name} kernel")
 
+        print("Pre summary", tracemalloc.get_traced_memory())
+
         # Print the summary in a panel
         logging.write(self._get_summary_panel(integrals, timer))
+
+        print("Post summary", tracemalloc.get_traced_memory())
 
         return self.converged, self.gf, self.se, self.qp_energy
 

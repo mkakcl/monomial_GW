@@ -9,6 +9,11 @@ from momentGW.fock import FockLoop, search_chempot
 from momentGW.ints import Integrals
 from momentGW.rpa import dRPA
 from momentGW.tda import dTDA
+from momentGW.thc_tda import dTDA as dTDA_THC
+
+import tracemalloc
+import time
+from momentGW import metrics
 
 
 def kernel(
@@ -16,6 +21,7 @@ def kernel(
     nmom_max,
     moments=None,
     integrals=None,
+    se_static=None,
 ):
     """Moment-constrained one-shot GW.
 
@@ -31,6 +37,9 @@ def kernel(
     integrals : BaseIntegrals, optional
         Integrals object. If `None`, generate from scratch. Default
         value is `None`.
+    se_static : numpy.ndarray, optional
+        Static part of the self-energy. If `None`, generate from scratch.
+        Default value is `None`.
 
     Returns
     -------
@@ -60,8 +69,10 @@ def kernel(
         integrals = gw.ao2mo()
 
     # Get the static part of the SE
-    se_static = gw.build_se_static(integrals)
+    if se_static is None:
+        se_static = gw.build_se_static(integrals)
 
+    # t1 = time.time()
     # Get the moments of the SE
     if moments is None:
         th, tp = gw.build_se_moments(
@@ -74,10 +85,32 @@ def kernel(
         )
     else:
         th, tp = moments
+    # t2 = time.time()
+    # print(f"SE moments built in {t2 - t1:.2f} seconds")
+    tracemalloc.reset_peak()
 
+    # print("pre_solve_dyson memory", tracemalloc.get_traced_memory())
+    t1 = time.time()
     # Solve the Dyson equation
     gf, se = gw.solve_dyson(th, tp, se_static, integrals=integrals)
     conv = True
+    t2 = time.time()
+    print("")
+    dt = t2 - t1
+    print(f"Dyson equation solved in {dt}")
+    # record the Dyson wall-clock time
+    metrics.record("Dyson_solve_time", float(dt))
+    # record snapshot of traced memory at this point (bytes)
+    try:
+        dyson_mem = tracemalloc.get_traced_memory()[1]
+    except Exception:
+        dyson_mem = None
+    if dyson_mem is not None:
+        metrics.record("Dyson_memory", int(dyson_mem))
+        metrics.record("dyson_memory", int(dyson_mem))
+    print("")
+    # print("END?", tracemalloc.get_traced_memory())
+    # print("post_solve_dyson memory", tracemalloc.get_traced_memory())
 
     return conv, gf, se, None
 
@@ -257,7 +290,7 @@ class GW(BaseGW):
             return tda.kernel()
 
         elif self.polarizability.lower() == "thc-dtda":
-            tda = thc.dTDA(self, nmom_max, integrals, **kwargs)
+            tda = dTDA_THC(self, nmom_max, integrals, **kwargs)
             return tda.kernel()
 
         else:
@@ -287,7 +320,9 @@ class GW(BaseGW):
         # Get the integrals class
         if self.polarizability.lower().startswith("thc"):
             cls = thc.Integrals
-            kwargs = self.thc_opts
+            opts_copy = self.thc_opts.copy() if self.thc_opts is not None else {}
+            opts_copy["mol"] = self.mol
+            kwargs = opts_copy
         else:
             cls = Integrals
             kwargs = dict(
@@ -350,6 +385,7 @@ class GW(BaseGW):
         --------
         momentGW.fock.FockLoop
         """
+        # print("pre_solver memory", tracemalloc.get_traced_memory())
 
         # Solve the Dyson equation for the moments
         with logging.with_modifiers(status="Solving Dyson equation", timer="Dyson equation"):
@@ -364,6 +400,7 @@ class GW(BaseGW):
 
         # Initialise the solver
         solver = FockLoop(self, se=se, **self.fock_opts)
+        # print("post_solver memory", tracemalloc.get_traced_memory())
 
         # Shift the self-energy poles relative to the Green's function
         # to better conserve the particle number
@@ -382,6 +419,7 @@ class GW(BaseGW):
         gf, error = solver.solve_dyson(se_static, se=se)
         chempot = gf.chempot
         se = se.copy(chempot=chempot)
+        # print("post solve_dyson memory", tracemalloc.get_traced_memory())
 
         # Self-consistently renormalise the density matrix
         if self.fock_loop:
@@ -408,6 +446,7 @@ class GW(BaseGW):
         nmom_max,
         moments=None,
         integrals=None,
+        se_static=None,
     ):
         """Driver for the method.
 
@@ -422,6 +461,9 @@ class GW(BaseGW):
         integrals : Integrals, optional
             Integrals object. If `None`, generate from scratch. Default
             value is `None`.
+        se_static : numpy.ndarray, optional
+            Static part of the self-energy. If `None`, generate from scratch.
+            Default value is `None`.
 
         Returns
         -------
@@ -435,7 +477,7 @@ class GW(BaseGW):
         qp_energy : NoneType
             Quasiparticle energies. For most GW methods, this is `None`.
         """
-        return super().kernel(nmom_max, moments=moments, integrals=integrals)
+        return super().kernel(nmom_max, moments=moments, integrals=integrals, se_static=se_static)
 
     def make_rdm1(self, gf=None):
         """Get the first-order reduced density matrix.
