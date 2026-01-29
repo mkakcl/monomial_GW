@@ -216,7 +216,7 @@ class KGW(BaseKGW, GW):
                 solver_vir = MBLSE(se_static[k], np.array(se_moments_part[k]))
                 solver_vir.kernel()
 
-                result = Spectral.combine(solver_occ.result, solver_vir.result)
+                result = Spectral.combine_for_self_energy(solver_occ.result, solver_vir.result)
                 se.append(result.get_self_energy())
 
         # Initialise the solver
