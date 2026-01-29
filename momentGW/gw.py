@@ -327,7 +327,7 @@ class GW(BaseGW):
             solver_vir = MBLSE(se_static, np.array(se_moments_part))
             solver_vir.kernel()
 
-            result = Spectral.combine(solver_occ.result, solver_vir.result)
+            result = Spectral.combine_for_self_energy(solver_occ.result, solver_vir.result)
             se = result.get_self_energy()
 
         # Initialise the solver
