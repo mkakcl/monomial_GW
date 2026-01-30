@@ -193,7 +193,7 @@ class KUGW(BaseKUGW, KGW, UGW):
                 solver_vir = MBLSE(se_static[0][k], np.array(se_moments_part[0][k]))
                 solver_vir.kernel()
 
-                result = Spectral.combine(solver_occ.result, solver_vir.result)
+                result = Spectral.combine_for_self_energy(solver_occ.result, solver_vir.result)
                 se[0].append(result.get_self_energy())
 
                 solver_occ = MBLSE(se_static[1][k], np.array(se_moments_hole[1][k]))
@@ -202,7 +202,7 @@ class KUGW(BaseKUGW, KGW, UGW):
                 solver_vir = MBLSE(se_static[1][k], np.array(se_moments_part[1][k]))
                 solver_vir.kernel()
 
-                result = Spectral.combine(solver_occ.result, solver_vir.result)
+                result = Spectral.combine_for_self_energy(solver_occ.result, solver_vir.result)
                 se[1].append(result.get_self_energy())
 
         # Initialise the solver

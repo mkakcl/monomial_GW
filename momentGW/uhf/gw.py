@@ -207,7 +207,7 @@ class UGW(BaseUGW, GW):
             solver_vir = MBLSE(se_static[0], np.array(se_moments_part[0]))
             solver_vir.kernel()
 
-            result = Spectral.combine(solver_occ.result, solver_vir.result)
+            result = Spectral.combine_for_self_energy(solver_occ.result, solver_vir.result)
             se_α = result.get_self_energy()
 
             solver_occ = MBLSE(se_static[1], np.array(se_moments_hole[1]))
@@ -216,7 +216,7 @@ class UGW(BaseUGW, GW):
             solver_vir = MBLSE(se_static[1], np.array(se_moments_part[1]))
             solver_vir.kernel()
 
-            result = Spectral.combine(solver_occ.result, solver_vir.result)
+            result = Spectral.combine_for_self_energy(solver_occ.result, solver_vir.result)
             se_β = result.get_self_energy()
 
             se = (se_α, se_β)
