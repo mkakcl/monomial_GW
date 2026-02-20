@@ -168,8 +168,9 @@ class Base:
     def with_df(self):
         """Get the density fitting object."""
         if getattr(self._scf, "with_df", None) is None:
-            raise ValueError("GW solvers require density fitting.")
-        return self._scf.with_df
+            return None
+        else:
+            return self._scf.with_df
 
     @property
     def nao(self):
