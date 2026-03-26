@@ -513,7 +513,6 @@ def einsum(*operands, **kwargs):
         if len(contraction) == 5:
             inds, idx_rm, einsum_str, remaining, _ = contraction
         elif len(contraction) == 3:
-            print(contraction)
             inds, einsum_str, _ = contraction
         operands = [args.pop(x) for x in inds]
 
