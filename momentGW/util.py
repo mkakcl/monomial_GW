@@ -509,7 +509,12 @@ def einsum(*operands, **kwargs):
 
     # Execute the contractions in order
     args = list(args)
-    for i, (inds, idx_rm, einsum_str, remaining, _) in enumerate(contractions):
+    for i, contraction in enumerate(contractions):
+        if len(contraction) == 5:
+            inds, idx_rm, einsum_str, remaining, _ = contraction
+        elif len(contraction) == 3:
+            print(contraction)
+            inds, einsum_str, _ = contraction
         operands = [args.pop(x) for x in inds]
 
         # Output should only be provided for the last contraction
