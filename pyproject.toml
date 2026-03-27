@@ -95,6 +95,7 @@ ignore = [
     "PLC2401",  # non-ASCII-variable-name
     "PLW1641",  # eq-without-hash
     "PLW3301",  # nested max calls should be flattened
+    "PLW0108",  # Lambda may be unnecessary 
 ]
 
 [tool.ruff.lint.per-file-ignores]
