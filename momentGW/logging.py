@@ -14,7 +14,7 @@ from rich.theme import Theme
 
 from momentGW import __version__, mpi_helper, util
 
-HEADER = """                                       _    ______        __
+HEADER = r"""                                       _    ______        __
   _ __ ___   ___  _ __ ___   ___ _ __ | |_ / ___\ \      / /
  | '_ ` _ \ / _ \| '_ ` _ \ / _ \ '_ \| __| |  _ \ \ /\ / /
  | | | | | | (_) | | | | | |  __/ | | | |_| |_| | \ V  V /
@@ -158,7 +158,8 @@ def _update_live():
         LIVE.refresh()
         LIVE.stop()
         LIVE = None
-        console.clear_live()
+        with contextlib.suppress(AttributeError, IndexError):
+            console.clear_live()
 
     elif LIVE:
         # There is a live log and there is a status spinner and/or table
