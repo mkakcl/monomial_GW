@@ -90,8 +90,8 @@ class Test_KGW(unittest.TestCase):
             else:
                 # Attempt degenerate-block rotation like mo_k2gamma
                 Cg = Cg[:, E_sort_idx]
-                scell = scell if 'scell' in locals() else k2gamma.get_phase(self.cell, self.kpts)[0]
-                s = scell.pbc_intor('int1e_ovlp')
+                scell = scell if "scell" in locals() else k2gamma.get_phase(self.cell, self.kpts)[0]
+                s = scell.pbc_intor("int1e_ovlp")
 
                 E_k_degen = abs(E_g[1:] - E_g[:-1]) < 1e-3
                 degen_mask = np.append(False, E_k_degen) | np.append(E_k_degen, False)
@@ -100,17 +100,17 @@ class Test_KGW(unittest.TestCase):
                 if np.any(E_k_degen):
                     c_rest = Cg[:, ~degen_mask]
                     if c_rest.size > 0 and abs(c_rest.imag).max() < 1e-4:
-                        shift = min(E_g[degen_mask]) - .1
+                        shift = min(E_g[degen_mask]) - 0.1
                         weighted = Cg[:, degen_mask] * (E_g[degen_mask] - shift)
                         f = np.dot(weighted, Cg[:, degen_mask].conj().T)
-                        assert (abs(f.imag).max() < 1e-4)
+                        assert abs(f.imag).max() < 1e-4
 
                         e, na_orb = scipy.linalg.eigh(f.real, s, type=2)
                         Cg = Cg.real
                         Cg[:, degen_mask] = na_orb[:, e > 1e-7]
                     else:
                         f = np.dot(Cg * E_g, Cg.conj().T)
-                        assert (abs(f.imag).max() < 1e-4)
+                        assert abs(f.imag).max() < 1e-4
                         e, Cg = scipy.linalg.eigh(f.real, s, type=2)
 
                 # Check if now essentially real
@@ -129,7 +129,8 @@ class Test_KGW(unittest.TestCase):
             # Fall back to comparing gauge-invariant projectors and warn
             warnings.warn(
                 "MO coefficients have an arbitrary unitary gauge across k-points; "
-                "falling back to projector comparison.")
+                "falling back to projector comparison."
+            )
             P_k = c_gamma @ c_gamma.conj().T
             P_s = self.smf.mo_coeff @ self.smf.mo_coeff.conj().T
             np.testing.assert_allclose(P_k, P_s, atol=1e-8)
