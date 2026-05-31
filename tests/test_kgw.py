@@ -1,13 +1,13 @@
 """Tests for `pbc/gw.py`"""
 
 import unittest
+import warnings
 
 import numpy as np
+import scipy.linalg
 from pyscf.agf2 import mpi_helper
 from pyscf.pbc import dft, gto
 from pyscf.pbc.tools import k2gamma
-import warnings
-import scipy.linalg
 
 from momentGW import GW, KGW
 
@@ -101,7 +101,8 @@ class Test_KGW(unittest.TestCase):
                     c_rest = Cg[:, ~degen_mask]
                     if c_rest.size > 0 and abs(c_rest.imag).max() < 1e-4:
                         shift = min(E_g[degen_mask]) - .1
-                        f = np.dot(Cg[:, degen_mask] * (E_g[degen_mask] - shift), Cg[:, degen_mask].conj().T)
+                        weighted = Cg[:, degen_mask] * (E_g[degen_mask] - shift)
+                        f = np.dot(weighted, Cg[:, degen_mask].conj().T)
                         assert (abs(f.imag).max() < 1e-4)
 
                         e, na_orb = scipy.linalg.eigh(f.real, s, type=2)
