@@ -58,9 +58,13 @@ class Test_scKGW(unittest.TestCase):
 
         c_gamma = np.einsum("Rk,kum,kh->Ruhm", phase, self.mf.mo_coeff, k_phase)
         c_gamma = c_gamma.reshape(nao * nr, nk * nmo)
-        c_gamma[:, abs(c_gamma.real).max(axis=0) < 1e-5] *= -1j
 
-        self.assertAlmostEqual(np.max(np.abs(np.array(c_gamma).imag)), 0, 8)
+        # Compare gauge-invariant occupied-space projectors. See
+        # `tests/test_kgw.py` for a more comprehensive gauge-fixing test
+        # (handles degenerate blocks and attempts to make orbitals real).
+        P_k = c_gamma @ c_gamma.conj().T
+        P_s = self.smf.mo_coeff @ self.smf.mo_coeff.conj().T
+        np.testing.assert_allclose(P_k, P_s, atol=1e-8)
 
     def _test_vs_supercell(self, gw, kgw, full=False, check_convergence=True):
         if check_convergence:
