@@ -67,7 +67,6 @@ class KPoints:
         self._kpts = kpts
 
         self._kconserv = kpts_helper.get_kconserv(cell, kpts)
-        self._kpts_hash = {self.hash_kpts(kpt): k for k, kpt in enumerate(self._kpts)}
 
     def member(self, kpt):
         """Find the index of the k-point in the k-point list.
@@ -82,10 +81,12 @@ class KPoints:
         index : int
             Index of the k-point.
         """
-        if kpt not in self:
+        norms = np.linalg.norm(self._kpts - kpt, axis=1)
+        idx = np.argmin(norms)
+        if norms[idx] >= self.tol:
             raise ValueError(f"{kpt} is not in list")
-        return self._kpts_hash[self.hash_kpts(kpt)]
-
+        return idx
+    
     def index(self, kpt):
         """Alias for `member`.
 
@@ -161,22 +162,6 @@ class KPoints:
         kpts = self.get_abs_kpts(kpts)
 
         return kpts
-
-    @allow_single_kpt(output_is_kpts=False)
-    def hash_kpts(self, kpts):
-        """Convert k-points to a unique, hashable representation.
-
-        Parameters
-        ----------
-        kpts : numpy.ndarray
-            Absolute k-points.
-
-        Returns
-        -------
-        hash_kpts : tuple
-            Hashable representation of k-points.
-        """
-        return tuple(np.rint(kpts / (self.tol)).ravel().astype(int))
 
     @property
     def tol_decimals(self):
@@ -396,8 +381,9 @@ class KPoints:
         is_in : bool
             Whether the k-point is in the list.
         """
-        return self.hash_kpts(kpt) in self._kpts_hash
-
+        norms = np.linalg.norm(self._kpts - kpt, axis=1)
+        return np.any(norms < self.tol)
+    
     def __len__(self):
         """Get the number of k-points."""
         return len(self._kpts)
