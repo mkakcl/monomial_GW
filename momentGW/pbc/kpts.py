@@ -86,7 +86,7 @@ class KPoints:
         if norms[idx] >= self.tol:
             raise ValueError(f"{kpt} is not in list")
         return idx
-    
+
     def index(self, kpt):
         """Alias for `member`.
 
@@ -383,7 +383,7 @@ class KPoints:
         """
         norms = np.linalg.norm(self._kpts - kpt, axis=1)
         return np.any(norms < self.tol)
-    
+
     def __len__(self):
         """Get the number of k-points."""
         return len(self._kpts)
