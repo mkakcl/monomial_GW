@@ -408,7 +408,10 @@ class KPoints:
             other = KPoints(self.cell, other, tol=self.tol)
         if len(self) != len(other):
             return False
-        return self.hash_kpts(self._kpts) == other.hash_kpts(other._kpts)
+        for kpt in self._kpts:
+            if kpt not in other:
+                return False
+        return True
 
     def __ne__(self, other):
         """Check if two k-point lists are not equal to within `self.tol`."""
