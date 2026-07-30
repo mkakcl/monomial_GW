@@ -134,3 +134,6 @@ dmypy.json
 # Baseline arrays: reproducible from `python -m baseline.run`, and too large to track.
 # The committed JSON records carry the norms and spectra a comparison actually reads.
 baseline/arrays/
+
+# macOS
+.DS_Store

@@ -1,23 +1,15 @@
 repos:
 - repo: local
   hooks:
-  - id: ssort
-    name: ssort
-    entry: ssort
+  - id: ruff-check
+    name: ruff check
+    entry: ruff check --fix
     language: system
-    files: \.(py)$
-  - id: isort
-    name: isort
-    entry: isort
+    pass_filenames: false
+    always_run: true
+  - id: ruff-format
+    name: ruff format
+    entry: ruff format
     language: system
-    files: \.(py)$
-  - id: black
-    name: black
-    entry: black
-    language: system
-    files: \.(py)$
-  - id: flake8
-    name: flake8
-    entry: flake8
-    language: system
-    files: momentGW/
+    pass_filenames: false
+    always_run: true
