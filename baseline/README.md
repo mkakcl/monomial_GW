@@ -33,7 +33,17 @@ the recorded set on an unchanged code base found two quantities that move on the
   `conv_tol_nelec = 1e-6`, so it is reproducible only to its own convergence tolerance.
   That is expected, and the tolerance says so explicitly rather than by accident.
 
-The first of these is not self-contained. Rerunning the full set showed the plateau
+A third quantity appeared to move and did not. `eta0`'s largest matrix element came out 5%
+apart between two identical runs of H2/cc-pVDZ — while the Frobenius norm agreed to twelve
+decimal places, the singular values to 5e-16, and the error against the dense oracle was
+4e-16 in one run and 9e-16 in the other. Both are correct; they are the same operator in a
+different basis. H2 has a doubly degenerate singular value, and PySCF may return any basis
+within a degenerate orbital subspace. Only gauge-invariant quantities — norms, singular
+values, eigenvalues, ranks, residual ratios, energies — can be compared, so the checker
+compares eta0's singular values and not its largest element. `max_abs` is still recorded,
+because it is a useful scale to read; it just cannot gate anything.
+
+The first of the two real ones is not self-contained. Rerunning the full set showed the plateau
 propagating: a grid scale ~10% away gives an eta0 differing at its own quadrature-error
 level, that difference carries through the moments, and the quasiparticle energies come
 out up to **1e-9 Ha** apart — 8e-11 eV in the frontier energies, and larger in absolute

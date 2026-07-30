@@ -25,6 +25,19 @@ import numpy as np
 from baseline import frontier, systems
 from baseline.run import DATA_DIR, build_mean_field, run_case
 
+#: Every quantity compared below has to be invariant under the gauge freedom in the
+#: mean-field orbitals. PySCF may return any basis within a degenerate orbital subspace, and
+#: the compression metric's eigendecomposition may return any basis within a degenerate one
+#: of its own, so a quantity that depends on the choice moves between identical runs while
+#: nothing about the calculation has changed. Measured on H2/cc-pVDZ, where eta0 has a
+#: doubly degenerate singular value: the maximum element of eta0 moved by 5% between two
+#: runs whose singular values agreed to 5e-16 and whose error against the dense oracle was
+#: 4e-16 and 9e-16 -- the same operator, written in a different basis.
+#:
+#: So: norms, singular values, eigenvalues, ranks, residual ratios and energies. Never an
+#: individual matrix element, and never the maximum of a set of them. `max_abs` stays in the
+#: recorded data because it is a useful scale to read, but it cannot gate anything.
+
 #: Tolerance for a quantity that is an exact function of the inputs -- an integer count, or
 #: something that cannot move without the calculation having genuinely changed.
 EXACT = (1e-12, 0.0)
@@ -63,7 +76,9 @@ PLATEAU = (0.5, 0.0)
 #: tuple of keys; an integer key indexes a list. Values may be scalars or lists of scalars.
 COMPARED = (
     ("eta0 frobenius", ("eta0", "frobenius"), DETERMINISTIC),
-    ("eta0 max", ("eta0", "max_abs"), DETERMINISTIC),
+    # Singular values, not the maximum element. Both are recorded, but only one of them is
+    # a property of the calculation: see the note on gauge freedom below.
+    ("eta0 singular values", ("eta0", "singular_values_head"), DETERMINISTIC),
     ("eta0 condition", ("eta0", "condition"), DETERMINISTIC),
     ("eta0 error vs oracle", ("eta0", "oracle", "relative_error"), NOISE_FLOOR),
     ("Mtilde condition", ("eta0", "oracle", "mtilde_condition"), DETERMINISTIC),
