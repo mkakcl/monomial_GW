@@ -1,0 +1,180 @@
+# Milestone 0 — reproducible baseline
+
+The reference point every later change in [`ROADMAP.md`](../ROADMAP.md) is measured against.
+Not a benchmark: nothing here is scored against published values or against other codes.
+Its only job is to record what the restricted molecular G0W0/dRPA path currently produces,
+in enough detail that a later change can be shown to have moved one stage and not another.
+
+```bash
+python -m baseline.run                 # record the full set (~1 minute)
+python -m baseline.check               # re-run it and report what moved
+python -m baseline.check --systems water --rtol 1e-8
+```
+
+`check` exits non-zero if anything moved by more than the tolerance. It does not decide
+whether a movement is wrong — an intended change is reported just the same, and the
+baseline is then deliberately re-recorded.
+
+### Two quantities do not reproduce, and one global tolerance would hide it
+
+Each compared quantity carries its own tolerance in [`check.py`](check.py), because a
+single tolerance is either too loose to catch a real change or flags every case. Rerunning
+the recorded set on an unchanged code base found two quantities that move on their own:
+
+* **The Clenshaw-Curtis grid scale moves by ~10%.** It is chosen by minimising the error of
+  the one integral known in closed form, and that objective is flat to machine precision
+  over a wide range of scales — the recorded `diagonal_error` is `0.0` exactly on several
+  cases. The minimiser is therefore picking an arbitrary point on a plateau, and last-bit
+  differences in the mean field, from non-deterministic summation order in threaded BLAS,
+  move it. It changes the answer by ~1e-14 eV, so it is harmless here; it is worth knowing
+  before Milestone 2 replaces the grid, because it means the recorded scale carries no
+  information and a plateau is not a well-posed thing to be selecting on.
+* **The chemical potential moves by ~1e-6 relative.** It is located by a search with
+  `conv_tol_nelec = 1e-6`, so it is reproducible only to its own convergence tolerance.
+  That is expected, and the tolerance says so explicitly rather than by accident.
+
+A third quantity appeared to move and did not. `eta0`'s largest matrix element came out 5%
+apart between two identical runs of H2/cc-pVDZ — while the Frobenius norm agreed to twelve
+decimal places, the singular values to 5e-16, and the error against the dense oracle was
+4e-16 in one run and 9e-16 in the other. Both are correct; they are the same operator in a
+different basis. H2 has a doubly degenerate singular value, and PySCF may return any basis
+within a degenerate orbital subspace. Only gauge-invariant quantities — norms, singular
+values, eigenvalues, ranks, residual ratios, energies — can be compared, so the checker
+compares eta0's singular values and not its largest element. `max_abs` is still recorded,
+because it is a useful scale to read; it just cannot gate anything.
+
+The first of the two real ones is not self-contained. Rerunning the full set showed the plateau
+propagating: a grid scale ~10% away gives an eta0 differing at its own quadrature-error
+level, that difference carries through the moments, and the quasiparticle energies come
+out up to **1e-9 Ha** apart — 8e-11 eV in the frontier energies, and larger in absolute
+terms for the deep core states, which sit near −20 Ha and accumulate more absolute
+roundoff. So the reproducibility floor of the whole calculation is set by a free parameter
+being chosen on a flat objective, not by arithmetic. That is well below anything physically
+meaningful and no cause for alarm, but it does mean `DETERMINISTIC` is 1e-8 relative rather
+than machine precision, and it is the reason why.
+
+Everything else — the moment norms, the realization residuals, the auxiliary rank —
+reproduces to the last few bits.
+
+## What is recorded
+
+One JSON file per case in [`data/`](data), plus `index.json` for the sweep. Each record
+carries every item the roadmap's *definition of a trustworthy calculation* asks for, except
+where the code cannot currently supply it — those are recorded as `null` with the reason,
+rather than filled in with a proxy:
+
+| Field | What it is |
+|---|---|
+| `provenance` | momentGW and Dyson commits (with the checkout path and dirty flag), PySCF/NumPy/SciPy versions, the BLAS NumPy was built against, host and thread environment |
+| `mean_field` | starting point, basis, auxiliary basis, SCF tolerance, total energy, and the **mean-field** HOMO–LUMO gap — the quantity that sets the smallest particle-hole denominator entering the dRPA integrand |
+| `auxiliary` | `naux_full`, `naux`, and whether compression fired. `discarded_norm` is `null`: the compression selects on an absolute eigenvalue cutoff and never reports what it dropped (Milestone 4.5) |
+| `eta0` | the Clenshaw-Curtis grid scale, the closed-form diagonal integral and the quadrature's error against it, the nested half/quarter-grid error estimate, the norms, singular values and condition of the resulting zeroth moment, and — under `oracle` — its **true** error against a dense eigendecomposition, with the spectrum and condition number of `Mtilde` |
+| `dd_moments` | per-order Frobenius and maximum norms of the density-density moments |
+| `se_moments` | the same for the hole and particle self-energy moments, plus `streaming_vs_staged_max_abs` |
+| `realization` | per sector: the number of moments supplied, the number the recurrence conserves, per-order norms of the moments the realized self-energy actually carries, and the per-order absolute and relative Frobenius and maximum-norm errors against the moments it was handed, from Dyson's `moment_errors` |
+| `moment_error` | momentGW's own scaled error between input and realized self-energy moments |
+| `green_function` | pole count, chemical potential, electron count and the particle-number error |
+| `results` | frontier HOMO/LUMO by Aufbau counting over multiplets, with weights, the threshold plateau, and a per-reference-orbital quasiparticle table |
+| `timings_seconds` | wall time per stage: integrals, static self-energy, eta0, dd moments, self-energy moments (both paths), Dyson, realization diagnostics — read next to `load_average` and `cpu_count` |
+
+The arrays themselves — eta0, the input and reconstructed moments, the static self-energy,
+and the Green's function and self-energy poles and couplings — go to `arrays/<case_id>.npz`,
+which is **not committed**. They regenerate from this script, and a comparison reads the norms and spectra
+in the JSON, not the raw arrays. Pass `--no-arrays` to skip writing them.
+
+### Two moment paths, deliberately
+
+`gw.kernel` builds the density-density moments one order at a time (`build_nth_dd_moment`);
+`build_dd_moments` builds the whole stack through a different recurrence. Both are run and
+`se_moments.streaming_vs_staged_max_abs` records the largest disagreement between the
+self-energy moments they produce. They are equal in exact arithmetic, so this is a direct
+measure of how much the raw monomial recurrences amplify roundoff — the thing Milestone 3
+has to control. The **streaming** path feeds the Dyson solve, because that is what
+`gw.kernel` does in production.
+
+## The set
+
+Four GW100 molecules plus one anchor, at `nmom_max` 1, 3, 5 and 7, from both a
+Hartree-Fock and a PBE starting point. See [`systems.py`](systems.py) for the geometries
+and why each system is in the set.
+
+Lithium-hydride and water are additionally run with auxiliary compression disabled. Two
+systems, not one, because the recorded data shows the criterion doing nothing at all on
+water: with the `"ia"` metric the compression selects on the eigenvalues of a Gram matrix
+whose rank cannot exceed the number of particle-hole pairs, so at a `1e-10` tolerance it
+removes the null directions and nothing else. Lithium-hydride has 60 auxiliary functions
+and 34 particle-hole pairs and compresses to 34; water has 71 and 95 and compresses to 71,
+which is to say not at all. Only running the pair on water would have recorded a
+compressed/uncompressed comparison in which the two sides were the same calculation.
+
+Odd `nmom_max` only: the `MBLSE` construction conserves `2 * iteration + 2` moments, so an
+even value supplies a moment the recurrence has no block for. Milestone 1.3 is where that
+becomes an explicit, reported constraint rather than a convention.
+
+Geometries, basis, auxiliary basis and SCF tolerance are those of the `gw100` set in
+[`mkakcl/molecular-mGW-testing`](https://github.com/mkakcl/molecular-mGW-testing), so
+these cases are directly comparable to the results that harness has already recorded for
+the same systems. The frontier readout in [`frontier.py`](frontier.py) follows its
+`spectrum.py` for the same reason — including the 0.1 quasiparticle weight threshold, which
+that repository documents at length after a lower value picked a satellite as the LUMO and
+moved a reported gap by 3 eV.
+
+`hydrogen-631g` is the exception: it is the worked example in the top-level
+[`README.md`](../README.md), and reproduces its published value —
+
+```
+hydrogen-631g_hf_nmom1_ia    HOMO -16.0474 eV    LUMO 6.5348 eV
+```
+
+— which is an anchor recorded before any of this roadmap's work started.
+
+## What this baseline is not
+
+* **Not a convergence claim.** `green_function.converged_flag` is `true` in every record
+  because momentGW returns `True` unconditionally for one-shot GW. It is recorded with that
+  caveat attached, and Milestone 1.4 replaces it with a numerical convergence result.
+* **Not a memory measurement.** `peak_memory_gb` is the process-wide high-water mark, so it
+  only rises through a sweep. It bounds what a case needed; it does not measure it.
+* **Not a performance measurement.** The stage timings say which stage dominates, which is
+  what Milestone 4 needs before it can choose what to optimise. They are wall clock on a
+  shared workstation: the recorded set was taken at a load average of 12–19 on 12 cores,
+  and the same ozone case timed 4x faster on an idle machine. `load_average` is recorded
+  per case so this is visible rather than assumed. Any *comparison* of timings needs a
+  quiet machine and the provenance the roadmap asks for.
+## The eta0 error the code reports is not the eta0 error
+
+`eta0.nested_error_estimate` is what momentGW prints as "Error in integral". It is an
+extrapolation across coarser grids, not a bound, and the oracle shows how far off it is at
+the default `npoints = 48`:
+
+| case | `Mtilde` condition | true relative error | reported estimate |
+|---|---:|---:|---:|
+| `hydrogen-631g` HF | 5.6 | 5.1e-16 | 4.4e-4 |
+| `water` PBE | 6.3e3 | 2.8e-12 | 2.1e-3 |
+| `ozone` PBE | 6.7e4 | 1.2e-9 | 4.5e-3 |
+
+Six to twelve orders of magnitude, always pessimistic. Two things follow, and they pull in
+opposite directions:
+
+* The Clenshaw-Curtis eta0 is **much more accurate than advertised** on these systems, and
+  saturates at the floating-point floor by `npoints = 96`. Milestone 2 should not expect to
+  win on accuracy here. Its case is cost — 48 quadrature points, each an `naux`-cubed
+  inverse — and having a certificate at all.
+* The true error nonetheless tracks the conditioning of `Mtilde`, rising from 5e-16 to
+  1e-9 as the condition number rises from 5.6 to 6.7e4. A stiffer system will eventually
+  need more points, and **nothing in the current code could tell you that it had**, because
+  the one number reported is uninformative in both directions. That is the argument for
+  Milestone 2's certified interval, and it is now measured rather than asserted.
+
+## Dependency pinning
+
+`pyproject.toml` pins Dyson to an immutable commit rather than `@master`. Two installs of
+the same momentGW commit previously resolved to whatever Dyson's default branch happened to
+be that day, so no recorded result could name the code that produced it.
+
+The pin is currently `mkakcl/dyson@ca60fe8`, which carries the corrected moment-error
+diagnostic (`mkakcl/dyson#1`) that upstream master does not yet have. This baseline is
+recorded against a diagnostic that reports the error over all conserved orders; before that
+fix the comparison silently dropped the two newest moments and returned exactly zero at the
+first iteration. Move the pin to a `BoothGroup/dyson` commit once the Milestone 1 work is
+upstreamed and accepted, and re-record.

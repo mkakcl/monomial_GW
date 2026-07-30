@@ -27,13 +27,20 @@ dependencies = [
     "scipy>=1.9.0",
     "pyscf>2.0.0",
     "rich>=13.0.0",
-    "dyson @ git+https://github.com/BoothGroup/dyson@master",
+    # Pinned to an immutable commit, not a branch. `@master` meant every install resolved to
+    # whatever dyson's default branch happened to be that day, so two installs of the same
+    # momentGW commit could differ in the Dyson solvers -- and no recorded result could name
+    # the code that produced it. `ca60fe8` is mkakcl/dyson master, the commit the baseline in
+    # `baseline/` was recorded against; it carries the corrected moment-error diagnostic
+    # (mkakcl/dyson#1) that upstream master does not yet have. Move this pin to a
+    # BoothGroup/dyson commit once the Milestone 1 fixes are upstreamed and accepted.
+    "dyson @ git+https://github.com/mkakcl/dyson@ca60fe85195db40cedb6b52c6e538de8692e06ac",
 ]
 dynamic = [
     "version",
 ]
 
-[tools.setuptools.dynamic]
+[tool.setuptools.dynamic]
 version = {attr = "momentGW.__version__"}
 
 [build-system]
@@ -59,7 +66,13 @@ mpi = [
 [tool.ruff]
 line-length = 100
 target-version = "py311"
-include = ["pyproject.toml", "momentGW/**/*.py", "tests/**/*.py", "examples/**/*.py"]
+include = [
+    "pyproject.toml",
+    "momentGW/**/*.py",
+    "tests/**/*.py",
+    "examples/**/*.py",
+    "baseline/**/*.py",
+]
 
 [tool.ruff.format]
 quote-style = "double"
