@@ -101,8 +101,10 @@ SYSTEMS = {
             nelectron=10,
             source="GW100 (HCP92 experimental structure) via molecular-mGW-testing gw100 set",
             note=(
-                "The ordinary well-behaved case, and the system the compressed/uncompressed "
-                "auxiliary-space pair is run on."
+                "The ordinary well-behaved case. Also the control half of the "
+                "compressed/uncompressed pair: it has fewer auxiliary functions than "
+                "particle-hole pairs, so the compression has no null directions to remove "
+                "and is exactly a no-op."
             ),
         ),
         System(
@@ -115,7 +117,9 @@ SYSTEMS = {
             note=(
                 "Strongly ionic, with a diffuse and weakly bound LUMO -- the published "
                 "G0W0@PBE and CCSD(T) HOMO energies differ by 1.4 eV, more than any other "
-                "system here."
+                "system here. It has more auxiliary functions than particle-hole pairs, so "
+                "it is the half of the compressed/uncompressed pair where the compression "
+                "actually removes something: 60 auxiliaries down to 34."
             ),
         ),
         System(

@@ -338,6 +338,53 @@ class _timed:
         return False
 
 
+#: Largest particle-hole space for which the dense eta0 oracle is built. The oracle forms
+#: and diagonalises an `nov` by `nov` matrix, which is exactly the object the production
+#: path is built to avoid; it is affordable only because these systems are small.
+ORACLE_MAX_NOV = 2000
+
+
+def eta0_oracle(rpa):
+    r"""Compute eta0 exactly, by eigendecomposition, as a reference for the quadrature.
+
+    The projected zeroth dRPA moment has a closed form,
+
+    .. math::
+        \eta_0 = L D^{1/2} \tilde{M}^{-1/2} D^{1/2}, \qquad
+        \tilde{M} = D^2 + 4 W W^T, \qquad W = D^{1/2} L^T
+
+    with `D` the diagonal particle-hole energy differences and `L` the RI integrals. Formed
+    densely this is `nov` by `nov` and does not scale, which is why the production path
+    integrates instead. At these system sizes it is affordable, and it turns the recorded
+    eta0 error from an estimate into a measurement.
+
+    Parameters
+    ----------
+    rpa : momentGW.rpa.dRPA
+        The polarizability object, with the energy differences already built.
+
+    Returns
+    -------
+    eta0 : numpy.ndarray
+        The exact projected zeroth moment.
+    record : dict
+        The spectrum and condition number of `Mtilde`.
+    """
+    d = rpa.d
+    Lia = rpa.integrals.Lia
+    w = (d**0.5)[:, None] * Lia.T
+    mtilde = np.diag(d**2) + 4.0 * (w @ w.T)
+    eigvals, eigvecs = np.linalg.eigh(mtilde)
+    inv_sqrt = (eigvecs / np.sqrt(eigvals)[None]) @ eigvecs.T
+    exact = Lia @ ((d**0.5)[:, None] * inv_sqrt * (d**0.5)[None])
+    record = {
+        "mtilde_min_eigenvalue": float(eigvals[0]),
+        "mtilde_max_eigenvalue": float(eigvals[-1]),
+        "mtilde_condition": float(eigvals[-1] / eigvals[0]),
+    }
+    return exact, record
+
+
 def run_case(mf, mean_field, system, nmom_max, *, compression, compression_tol, save_arrays=True):
     """Run one baseline case and record everything the roadmap asks a calculation to report.
 
@@ -384,6 +431,23 @@ def run_case(mf, mean_field, system, nmom_max, *, compression, compression_tol, 
     with _timed(timings, "eta0"):
         eta0, eta0_record = _eta0_with_diagnostics(rpa)
 
+    # The quadrature's own error estimate is an extrapolation over coarser grids, not a
+    # bound. Where the exact answer is affordable, record the error against it instead, so
+    # the recorded accuracy of eta0 is measured rather than claimed.
+    with _timed(timings, "eta0_oracle"):
+        if rpa.nov <= ORACLE_MAX_NOV:
+            exact, oracle_record = eta0_oracle(rpa)
+            difference = eta0 - exact
+            norm = float(np.linalg.norm(exact))
+            eta0_record["oracle"] = {
+                **oracle_record,
+                "absolute_error": float(np.linalg.norm(difference)),
+                "relative_error": float(np.linalg.norm(difference) / norm) if norm else None,
+                "max_abs_error": float(np.max(np.abs(difference))),
+            }
+        else:
+            eta0_record["oracle"] = {"skipped": f"nov > {ORACLE_MAX_NOV}"}
+
     with _timed(timings, "dd_moments"):
         dd_moments = rpa.build_dd_moments(integral=eta0)
 
@@ -406,15 +470,21 @@ def run_case(mf, mean_field, system, nmom_max, *, compression, compression_tol, 
     # them and discards them, so they are rebuilt here to read the per-order errors off.
     with _timed(timings, "realization_diagnostics"):
         realization = {}
+        reconstructed = {}
         for sector, moments in (("hole", th), ("particle", tp)):
             solver = MBLSE(se_static, np.array(moments))
             solver.kernel()
+            # The moments the realized self-energy actually carries, as distinct from the
+            # moments it was asked to carry. Recorded in full alongside the errors, because
+            # an error norm cannot say which order or which block a discrepancy sits in.
+            reconstructed[sector] = np.asarray(solver.reconstruct_moments(solver.max_cycle))
             realization[sector] = {
                 "requested_nmom_max": nmom_max,
                 "moments_supplied": int(np.asarray(moments).shape[0]),
                 "max_cycle": int(solver.max_cycle),
                 "nmom_conserved": int(solver.nmom_conserved(solver.max_cycle)),
                 "n_poles": int(np.asarray(solver.result.eigvals).size),
+                "reconstructed_moments": _per_order(reconstructed[sector]),
                 "errors": _moment_errors(solver.moment_errors()),
             }
 
@@ -484,6 +554,12 @@ def run_case(mf, mean_field, system, nmom_max, *, compression, compression_tol, 
         ),
         "qp_energy_by_overlap_ha": [float(x) for x in np.asarray(qp_energy).ravel()],
         "timings_seconds": {k: round(v, 4) for k, v in timings.items()},
+        # Wall time on a shared machine is only interpretable next to the load it was
+        # measured under. These are the 1, 5 and 15 minute averages at the end of the case;
+        # anything approaching the core count means the timings above are contended and
+        # cannot be compared against a run recorded on a quiet machine.
+        "load_average": [round(x, 2) for x in os.getloadavg()],
+        "cpu_count": os.cpu_count(),
         "peak_memory_gb": round(_peak_memory_gb(), 4),
     }
     record["timings_seconds"]["total"] = round(time.perf_counter() - started, 4)
@@ -502,6 +578,8 @@ def run_case(mf, mean_field, system, nmom_max, *, compression, compression_tol, 
             gf_couplings=gf.couplings,
             se_energies=se.energies,
             se_couplings=se.couplings,
+            reconstructed_moments_hole=reconstructed["hole"],
+            reconstructed_moments_particle=reconstructed["particle"],
         )
         record["arrays"] = os.path.relpath(path, HERE)
     else:
@@ -533,12 +611,23 @@ def case_id(system, xc, nmom_max, compression):
     return f"{system.name}_{xc}_nmom{nmom_max}_{tag}"
 
 
+#: Systems additionally run with the auxiliary compression disabled, giving the roadmap's
+#: "compressed and uncompressed auxiliary spaces for at least one molecule". Two are needed
+#: because the criterion does nothing on one of them: with the `"ia"` metric the compression
+#: is selecting on the eigenvalues of a Gram matrix whose rank cannot exceed the number of
+#: particle-hole pairs, so it removes exactly the null directions and nothing else.
+#: Lithium-hydride has more auxiliary functions than particle-hole pairs and loses 60 -> 34;
+#: water has fewer and loses nothing, making it the control that shows the tolerance is not
+#: what is doing the work.
+COMPRESSION_PAIR = ("lithium-hydride", "water")
+
+
 def plan(selected_systems, starting_points, orders):
     """Enumerate the cases in a sweep.
 
     Every system is run at every requested order and starting point with the default
-    auxiliary compression. Water is additionally run with compression disabled, which is
-    the roadmap's "compressed and uncompressed for at least one molecule".
+    auxiliary compression. The systems in `COMPRESSION_PAIR` are additionally run with
+    compression disabled.
 
     Parameters
     ----------
@@ -563,7 +652,7 @@ def plan(selected_systems, starting_points, orders):
                 continue
             for nmom_max in orders:
                 cases.append((system, xc, nmom_max, "ia"))
-                if system.name == "water":
+                if system.name in COMPRESSION_PAIR:
                     cases.append((system, xc, nmom_max, ""))
     return cases
 
