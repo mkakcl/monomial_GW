@@ -1,0 +1,292 @@
+{
+ "cases": [
+  {
+   "case_id": "hydrogen_hf_nmom1_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "hydrogen_hf_nmom3_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "hydrogen_hf_nmom5_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "hydrogen_hf_nmom7_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "hydrogen_pbe_nmom1_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "hydrogen_pbe_nmom3_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "hydrogen_pbe_nmom5_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "hydrogen_pbe_nmom7_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_hf_nmom1_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_hf_nmom1_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_hf_nmom3_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_hf_nmom3_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_hf_nmom5_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_hf_nmom5_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_hf_nmom7_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_hf_nmom7_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_pbe_nmom1_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_pbe_nmom1_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_pbe_nmom3_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_pbe_nmom3_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_pbe_nmom5_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_pbe_nmom5_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_pbe_nmom7_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "water_pbe_nmom7_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_hf_nmom1_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_hf_nmom1_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_hf_nmom3_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_hf_nmom3_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_hf_nmom5_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_hf_nmom5_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_hf_nmom7_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_hf_nmom7_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_pbe_nmom1_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_pbe_nmom1_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_pbe_nmom3_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_pbe_nmom3_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_pbe_nmom5_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_pbe_nmom5_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_pbe_nmom7_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "lithium-hydride_pbe_nmom7_nocompression",
+   "status": "complete"
+  },
+  {
+   "case_id": "ozone_hf_nmom1_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "ozone_hf_nmom3_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "ozone_hf_nmom5_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "ozone_hf_nmom7_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "ozone_pbe_nmom1_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "ozone_pbe_nmom3_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "ozone_pbe_nmom5_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "ozone_pbe_nmom7_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "hydrogen-631g_hf_nmom1_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "hydrogen-631g_hf_nmom3_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "hydrogen-631g_hf_nmom5_ia",
+   "status": "complete"
+  },
+  {
+   "case_id": "hydrogen-631g_hf_nmom7_ia",
+   "status": "complete"
+  }
+ ],
+ "n_cases": 52,
+ "n_failed": 0,
+ "provenance": {
+  "blas": {
+   "blas": {
+    "detection method": "pkgconfig",
+    "name": "blas",
+    "version": "3.9.0"
+   },
+   "lapack": {
+    "detection method": "pkgconfig",
+    "name": "lapack",
+    "version": "3.9.0"
+   }
+  },
+  "code": {
+   "baseline_script": {
+    "branch": "claude/m0-baseline",
+    "commit": "0d63248d4da30b74036b001e35015d48834fd02b",
+    "dirty": true,
+    "path": "/home/marcusallen/Documents/moment representations/monomial_moments/monomial_GW/.claude/worktrees/m0-baseline/baseline"
+   },
+   "dyson": {
+    "branch": "master",
+    "commit": "ca60fe85195db40cedb6b52c6e538de8692e06ac",
+    "dirty": false,
+    "path": "/home/marcusallen/Documents/moment representations/monomial_moments/dyson/dyson/__init__.py",
+    "version": "1.0.0"
+   },
+   "momentGW": {
+    "branch": "claude/m0-baseline",
+    "commit": "0d63248d4da30b74036b001e35015d48834fd02b",
+    "dirty": true,
+    "path": "/home/marcusallen/Documents/moment representations/monomial_moments/monomial_GW/.claude/worktrees/m0-baseline/momentGW/__init__.py",
+    "version": "1.0.0"
+   }
+  },
+  "host": {
+   "conda_env": "monomial_moments",
+   "cpu_count": 12,
+   "machine": "x86_64",
+   "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+   "threads": {
+    "MKL_NUM_THREADS": null,
+    "OMP_NUM_THREADS": null,
+    "OPENBLAS_NUM_THREADS": null
+   }
+  },
+  "recorded_utc": "2026-07-30T16:34:51Z",
+  "versions": {
+   "numpy": "2.3.5",
+   "pyscf": "2.13.1",
+   "python": "3.11.15",
+   "scipy": "1.17.1"
+  }
+ },
+ "schema_version": "1.0",
+ "sweep": {
+  "compression": [
+   "ia",
+   ""
+  ],
+  "orders": [
+   1,
+   3,
+   5,
+   7
+  ],
+  "starting_points": [
+   "hf",
+   "pbe"
+  ],
+  "systems": [
+   "hydrogen",
+   "water",
+   "lithium-hydride",
+   "ozone",
+   "hydrogen-631g"
+  ]
+ }
+}
