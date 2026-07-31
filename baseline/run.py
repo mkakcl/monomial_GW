@@ -591,8 +591,10 @@ def run_case(mf, mean_field, system, nmom_max, *, compression, compression_tol, 
         "green_function": {
             "converged_flag": bool(converged),
             "converged_flag_note": (
-                "momentGW returns True unconditionally for one-shot GW; it is not a "
-                "numerical convergence result. Milestone 1.4 replaces it."
+                "Since Milestone 1.4 this is a numerical convergence result: the realization "
+                "delivered every moment order it was asked for, and the particle-number error "
+                "is within tolerance. Records made before 1.4 carry an unconditional True, so "
+                "a case that steps down reads True there and False here."
             ),
             "n_poles": int(np.asarray(gf.energies).size),
             "chempot": float(gf.chempot),

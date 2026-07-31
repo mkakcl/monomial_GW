@@ -46,21 +46,22 @@ conjugation, momentum, and normalization conventions require separate validation
 
 ## Milestone 0 - Reproducible baseline
 
-**Status: Planned**
+**Status: Complete - 52 cases recorded in [`baseline/`](baseline/README.md), and
+reproduced 52/52 by `python -m baseline.check` at each quantity's own tolerance.**
 
 ### Work
 
-- [ ] Record a compact baseline set of restricted molecular G0W0/dRPA calculations:
+- [x] Record a compact baseline set of restricted molecular G0W0/dRPA calculations:
   H2, H2O, LiH, and at least one small-gap molecule.
-- [ ] Save eta0, density-response moments, hole and particle self-energy moments,
+- [x] Save eta0, density-response moments, hole and particle self-energy moments,
   reconstructed moments, frontier QP energies, particle-number error, auxiliary rank,
   and stage timings.
-- [ ] Include `nmom_max=1, 3, 5, 7` where numerically feasible.
-- [ ] Run compressed and uncompressed auxiliary spaces for at least one molecule.
-- [ ] Record the exact momentGW, Dyson, PySCF, NumPy, SciPy, and BLAS versions.
-- [ ] Correct `[tools.setuptools.dynamic]` to `[tool.setuptools.dynamic]` so builds
+- [x] Include `nmom_max=1, 3, 5, 7` where numerically feasible.
+- [x] Run compressed and uncompressed auxiliary spaces for at least one molecule.
+- [x] Record the exact momentGW, Dyson, PySCF, NumPy, SciPy, and BLAS versions.
+- [x] Correct `[tools.setuptools.dynamic]` to `[tool.setuptools.dynamic]` so builds
   publish the package version correctly.
-- [ ] Stop installing mutable `dyson@master`; pin the currently tested commit, then
+- [x] Stop installing mutable `dyson@master`; pin the currently tested commit, then
   update that pin only when Milestone 1 is accepted.
 
 ### Acceptance gate
