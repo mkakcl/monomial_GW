@@ -190,7 +190,7 @@ class BSE(Base):
         # sure that it would run through in parallel.
 
         # Construct the energy differences
-        if not self.gw.converged:
+        if not self.gw.qp_energy_converged:
             logging.warn("[red]GW calculation has not converged[/] - using MO energies for BSE")
             qp_energy = self.mo_energy
         else:

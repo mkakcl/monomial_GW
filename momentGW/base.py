@@ -353,6 +353,11 @@ class BaseGW(Base):
     fock_opts : dict, optional
         Dictionary of options passed to the Fock loop. For more details
         see `momentGW.fock`.
+    dyson_opts : dict, optional
+        Dictionary of numerical options passed to the Dyson moment block
+        Lanczos solver. Stated explicitly rather than inherited from
+        Dyson, so that a change of pin cannot silently change the
+        numerics here. For more details see `dyson.MBLSE`.
     compression : str, optional
         Blocks of the ERIs to use as a metric for compression. Can be
         one or more of `("oo", "ov", "vv", "ia")` which can be passed as
@@ -381,6 +386,11 @@ class BaseGW(Base):
             max_cycle_inner=50,
             max_cycle_outer=20,
         ),
+        dyson_opts=OrderedDict(
+            hermitian=True,
+            force_orthogonality=True,
+            calculate_errors=True,
+        ),
         compression="ia",
         compression_tol=1e-10,
         thc_opts=OrderedDict(
@@ -396,11 +406,37 @@ class BaseGW(Base):
         self.se = None
         self.gf = None
         self._qp_energy = None
+        self.dyson_diagnostics = None
+
+    #: Whether the solver iterates towards self-consistency. A solver that does not has no
+    #: outer loop that can fail, so its quasiparticle energies are its answer whatever the
+    #: numerical gates in `converged` report.
+    _self_consistent = False
 
     @property
     def name(self):
         """Abstract property for the solver name."""
         raise NotImplementedError
+
+    @property
+    def qp_energy_converged(self):
+        """Whether the quasiparticle energies solve the equations the method poses.
+
+        This is not `converged`. For a self-consistent solver the two agree, because an
+        outer loop that has not converged has not solved anything. For a single-shot
+        solver there is no outer loop, so the quasiparticle energies are the answer even
+        where `converged` is `False` because the realization delivered fewer moment
+        orders than it was asked for. That reduction is a measured loss of accuracy,
+        reported through `dyson_diagnostics`, and not a reason to discard the result.
+
+        Returns
+        -------
+        converged : bool
+            Whether the quasiparticle energies can be used.
+        """
+        if self._self_consistent:
+            return bool(self.converged)
+        return True
 
     def build_se_static(self, *args, **kwargs):
         """Abstract method for building the static self-energy."""

@@ -185,6 +185,8 @@ class evGW(GW):
         which they are considered zero. Default value is `1e-11`.
     """
 
+    _self_consistent = True
+
     _defaults = OrderedDict(
         **GW._defaults,
         g0=False,

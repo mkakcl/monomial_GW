@@ -11,6 +11,71 @@ from momentGW.rpa import dRPA
 from momentGW.tda import dTDA
 
 
+def nelec_tolerance(gw, fock_loop):
+    """Return the tolerance the particle-number error is judged against.
+
+    A one-shot calculation only searches for a chemical potential, so its
+    particle-number error is limited by where the poles fall. Shifting the
+    self-energy poles or running the Fock loop makes the particle number
+    something the calculation actually solves for, and the error is held to
+    the Fock loop's tolerance instead.
+
+    Parameters
+    ----------
+    gw : BaseGW
+        GW object.
+    fock_loop : momentGW.fock.FockLoop
+        Fock loop solver. Its tolerance is read from the solver rather than
+        from `gw.fock_opts`, which may override only some of the defaults.
+
+    Returns
+    -------
+    tol : float
+        Tolerance on the error in the number of electrons.
+    """
+    if gw.fock_loop or gw.optimise_chempot:
+        return fock_loop.conv_tol_nelec
+    return 1e-1
+
+
+def realization_record(solver, se_moments):
+    """Summarise what a Dyson solver realized, as distinct from what it was asked for.
+
+    Dyson stops the recurrence when an iteration produces an off-diagonal
+    square with no real square root, and solves at the last order it
+    completed. Everything here is read at the achieved order, because that is
+    the realization the Dyson solve used; the requested order is recorded
+    beside it, not in place of it.
+
+    Parameters
+    ----------
+    solver : dyson.MBLSE
+        Solver, after `kernel` has been called.
+    se_moments : numpy.ndarray
+        Moments the solver was handed.
+
+    Returns
+    -------
+    record : dict
+        Realization diagnostics for one sector.
+    """
+    if solver.max_cycle_achieved is None:
+        achieved = solver.max_cycle
+    else:
+        achieved = solver.max_cycle_achieved
+
+    return {
+        "moments_supplied": int(np.asarray(se_moments).shape[0]),
+        "max_cycle": int(solver.max_cycle),
+        "max_cycle_achieved": int(achieved),
+        "order_reduced": int(achieved) != int(solver.max_cycle),
+        "nmom_conserved_requested": int(solver.nmom_conserved(solver.max_cycle)),
+        "nmom_conserved_achieved": int(solver.nmom_conserved(achieved)),
+        "n_poles": int(np.asarray(solver.result.eigvals).size),
+        "errors": solver.moment_errors() if solver.calculate_errors else None,
+    }
+
+
 def kernel(
     gw,
     nmom_max,
@@ -35,8 +100,11 @@ def kernel(
     Returns
     -------
     conv : bool
-        Convergence flag. Always `True` for GW, returned for
-        compatibility with other GW methods.
+        Convergence flag. A one-shot calculation has no outer loop, so
+        this reports whether the numerical gates in
+        `gw.dyson_diagnostics` passed: the realization delivered every
+        moment order it was asked for, and the particle-number error is
+        within tolerance.
     gf : dyson.Lehmann
         Green's function object.
     se : dyson.Lehmann
@@ -77,7 +145,15 @@ def kernel(
 
     # Solve the Dyson equation
     gf, se = gw.solve_dyson(th, tp, se_static, integrals=integrals)
-    conv = True
+
+    # A single-shot calculation has no outer loop to converge, but it can still fail
+    # its numerical gates: report those rather than an unconditional `True`. The
+    # unrestricted and periodic solvers share this kernel but override `solve_dyson`
+    # without gating it yet, and keep the old unconditional flag until they do.
+    if gw.dyson_diagnostics is None:
+        conv = True
+    else:
+        conv = gw.dyson_diagnostics["converged"]
 
     return conv, gf, se, None
 
@@ -321,14 +397,28 @@ class GW(BaseGW):
 
         # Solve the Dyson equation for the moments
         with logging.with_modifiers(status="Solving Dyson equation", timer="Dyson equation"):
-            solver_occ = MBLSE(se_static, np.array(se_moments_hole))
+            solver_occ = MBLSE(se_static, np.array(se_moments_hole), **self.dyson_opts)
             solver_occ.kernel()
 
-            solver_vir = MBLSE(se_static, np.array(se_moments_part))
+            solver_vir = MBLSE(se_static, np.array(se_moments_part), **self.dyson_opts)
             solver_vir.kernel()
 
             result = Spectral.combine_for_self_energy(solver_occ.result, solver_vir.result)
             se = result.get_self_energy()
+
+        # Record what each sector realized. The solvers are the only place this is
+        # known, so it is read off here rather than rebuilt by whoever wants it.
+        realization = {
+            "hole": realization_record(solver_occ, se_moments_hole),
+            "particle": realization_record(solver_vir, se_moments_part),
+        }
+        for sector, record in realization.items():
+            if record["order_reduced"]:
+                logging.warn(
+                    f"[red]Realization stepped down[/] ({sector}): conserving "
+                    f"{record['nmom_conserved_achieved']} of "
+                    f"{record['nmom_conserved_requested']} moments"
+                )
 
         # Initialise the solver
         solver = FockLoop(self, se=se, **self.fock_opts)
@@ -339,11 +429,12 @@ class GW(BaseGW):
             se = solver.auxiliary_shift(se_static)
 
         # Find the error in the moments
-        error = self.moment_error(se_moments_hole, se_moments_part, se)
+        moment_error = self.moment_error(se_moments_hole, se_moments_part, se)
         logging.write(
-            f"Error in moments:  [{logging.rate(sum(error), 1e-12, 1e-8)}]{sum(error):.3e}[/] "
-            f"(hole = [{logging.rate(error[0], 1e-12, 1e-8)}]{error[0]:.3e}[/], "
-            f"particle = [{logging.rate(error[1], 1e-12, 1e-8)}]{error[1]:.3e}[/])"
+            f"Error in moments:  "
+            f"[{logging.rate(sum(moment_error), 1e-12, 1e-8)}]{sum(moment_error):.3e}[/] "
+            f"(hole = [{logging.rate(moment_error[0], 1e-12, 1e-8)}]{moment_error[0]:.3e}[/], "
+            f"particle = [{logging.rate(moment_error[1], 1e-12, 1e-8)}]{moment_error[1]:.3e}[/])"
         )
 
         # Solve the Dyson equation for the self-energy
@@ -352,22 +443,38 @@ class GW(BaseGW):
         se = se.copy(chempot=chempot)
 
         # Self-consistently renormalise the density matrix
+        fock_conv = None
         if self.fock_loop:
             logging.write("")
             solver.gf = gf
             solver.se = se
-            conv, gf, se = solver.kernel(integrals=integrals)
+            fock_conv, gf, se = solver.kernel(integrals=integrals)
             _, error = solver.search_chempot(gf)
 
         # Print the error in the number of electrons
+        nelec_tol = nelec_tolerance(self, solver)
         logging.write("")
-        style = logging.rate(
-            abs(error),
-            1e-6,
-            1e-6 if self.fock_loop or self.optimise_chempot else 1e-1,
-        )
+        style = logging.rate(abs(error), 1e-6, nelec_tol)
         logging.write(f"Error in number of electrons:  [{style}]{error:.3e}[/]")
         logging.write(f"Chemical potential:  {gf.chempot:.6f}")
+
+        # Record the gates the calculation is judged against, so that the caller can
+        # ask whether it converged instead of assuming that it did
+        gates = {
+            "realization": not any(r["order_reduced"] for r in realization.values()),
+            "nelec": bool(abs(error) <= nelec_tol),
+        }
+        if fock_conv is not None:
+            gates["fock_loop"] = bool(fock_conv)
+        self.dyson_diagnostics = {
+            "realization": realization,
+            "moment_error": {"hole": moment_error[0], "particle": moment_error[1]},
+            "nelec_error": float(error),
+            "nelec_tol": float(nelec_tol),
+            "chempot": float(gf.chempot),
+            "gates": gates,
+            "converged": all(gates.values()),
+        }
 
         return gf, se
 
@@ -395,7 +502,8 @@ class GW(BaseGW):
         -------
         converged : bool
             Whether the solver converged. For single-shot calculations,
-            this is always `True`.
+            this is whether the numerical gates in `dyson_diagnostics`
+            passed.
         gf : dyson.Lehmann
             Green's function object.
         se : dyson.Lehmann

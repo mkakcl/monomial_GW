@@ -253,6 +253,8 @@ class qsGW(GW):
         empty `dict`.
     """
 
+    _self_consistent = True
+
     _defaults = OrderedDict(
         **GW._defaults,
         max_cycle=50,
