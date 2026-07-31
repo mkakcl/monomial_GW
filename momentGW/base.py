@@ -407,6 +407,7 @@ class BaseGW(Base):
         self.gf = None
         self._qp_energy = None
         self.dyson_diagnostics = None
+        self.dyson_solvers = None
 
     #: Whether the solver iterates towards self-consistency. A solver that does not has no
     #: outer loop that can fail, so its quasiparticle energies are its answer whatever the

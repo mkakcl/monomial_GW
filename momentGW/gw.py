@@ -407,7 +407,10 @@ class GW(BaseGW):
             se = result.get_self_energy()
 
         # Record what each sector realized. The solvers are the only place this is
-        # known, so it is read off here rather than rebuilt by whoever wants it.
+        # known, so it is read off here rather than rebuilt by whoever wants it. They
+        # are kept for the same reason: anything read off a rebuilt solver is a
+        # re-derivation that can disagree with the realization actually used here.
+        self.dyson_solvers = {"hole": solver_occ, "particle": solver_vir}
         realization = {
             "hole": realization_record(solver_occ, se_moments_hole),
             "particle": realization_record(solver_vir, se_moments_part),

@@ -34,7 +34,6 @@ import dyson  # noqa: E402
 import numpy as np  # noqa: E402
 import pyscf  # noqa: E402
 import scipy  # noqa: E402
-from dyson import MBLSE  # noqa: E402
 from pyscf import dft, gto  # noqa: E402
 
 import momentGW  # noqa: E402
@@ -510,37 +509,38 @@ def run_case(mf, mean_field, system, nmom_max, *, compression, compression_tol, 
             nmom_max=nmom_max, moments=(th, tp), integrals=integrals
         )
 
-    # Realization diagnostics, per sector. `gw.solve_dyson` builds these solvers, uses
-    # them and discards them, so they are rebuilt here to read the per-order errors off.
+    # Realization diagnostics, per sector, read off the solve above rather than rebuilt.
+    # `gw.solve_dyson` keeps the solvers it used and reports what each sector realized on
+    # `dyson_diagnostics`; a second set of solvers built here would be a re-derivation that
+    # could disagree with the realization these numbers are supposed to describe.
     with _timed(timings, "realization_diagnostics"):
         realization = {}
         reconstructed = {}
-        for sector, moments in (("hole", th), ("particle", tp)):
-            solver = MBLSE(se_static, np.array(moments))
-            solver.kernel()
+        for sector in ("hole", "particle"):
+            realized = gw.dyson_diagnostics["realization"][sector]
             # The order that ran is not always the order that was asked for: Dyson steps the
             # recurrence down when an iteration produces an off-diagonal square with no real
             # square root, and solves at the last one it completed. Everything below is read
             # at the achieved order, because that is the realization the Dyson solve above
             # actually used; the requested order is recorded beside it, not in place of it.
-            achieved = solver.max_cycle
-            if solver.max_cycle_achieved is not None:
-                achieved = solver.max_cycle_achieved
+            achieved = realized["max_cycle_achieved"]
             # The moments the realized self-energy actually carries, as distinct from the
             # moments it was asked to carry. Recorded in full alongside the errors, because
             # an error norm cannot say which order or which block a discrepancy sits in.
-            reconstructed[sector] = np.asarray(solver.reconstruct_moments(achieved))
+            reconstructed[sector] = np.asarray(
+                gw.dyson_solvers[sector].reconstruct_moments(achieved)
+            )
             realization[sector] = {
                 "requested_nmom_max": nmom_max,
-                "moments_supplied": int(np.asarray(moments).shape[0]),
-                "max_cycle": int(solver.max_cycle),
-                "max_cycle_achieved": int(achieved),
-                "order_reduced": int(achieved) != int(solver.max_cycle),
-                "nmom_conserved_requested": int(solver.nmom_conserved(solver.max_cycle)),
-                "nmom_conserved_achieved": int(solver.nmom_conserved(achieved)),
-                "n_poles": int(np.asarray(solver.result.eigvals).size),
+                "moments_supplied": realized["moments_supplied"],
+                "max_cycle": realized["max_cycle"],
+                "max_cycle_achieved": achieved,
+                "order_reduced": realized["order_reduced"],
+                "nmom_conserved_requested": realized["nmom_conserved_requested"],
+                "nmom_conserved_achieved": realized["nmom_conserved_achieved"],
+                "n_poles": realized["n_poles"],
                 "reconstructed_moments": _per_order(reconstructed[sector]),
-                "errors": _moment_errors(solver.moment_errors()),
+                "errors": _moment_errors(realized["errors"]),
             }
 
     hole_error, particle_error = gw.moment_error(th, tp, se)
