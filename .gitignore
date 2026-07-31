@@ -131,6 +131,11 @@ dmypy.json
 # pycharm
 .idea/
 
+# Claude Code session state, including the git worktrees it opens under here. Left
+# untracked these are picked up by anything run from the repo root: a bare `ruff check`
+# descends into whatever worktrees are open and reports their errors as this repo's.
+.claude/
+
 # Baseline arrays: reproducible from `python -m baseline.run`, and too large to track.
 # The committed JSON records carry the norms and spectra a comparison actually reads.
 baseline/arrays/
