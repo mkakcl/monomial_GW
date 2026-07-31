@@ -107,6 +107,12 @@ COMPARED = (
         ("realization", "particle", "errors", "relative_frobenius"),
         NOISE_FLOOR,
     ),
+    # The order the recurrence actually reached. Dyson steps down when the requested order is
+    # not supportable, which silently changes what the realization is a realization *of*: the
+    # error norms stay small because they are then measured over fewer moments. Comparing the
+    # order itself is what makes that visible, and it is an integer, so it is exact.
+    ("hole realization order", ("realization", "hole", "max_cycle_achieved"), EXACT),
+    ("particle realization order", ("realization", "particle", "max_cycle_achieved"), EXACT),
     ("auxiliary rank", ("auxiliary", "naux"), EXACT),
     ("chemical potential", ("green_function", "chempot"), SEARCHED),
     ("particle number error", ("green_function", "particle_number_error"), SEARCHED),
