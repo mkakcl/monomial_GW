@@ -56,6 +56,22 @@ than machine precision, and it is the reason why.
 Everything else — the moment norms, the realization residuals, the auxiliary rank —
 reproduces to the last few bits.
 
+### It survived a change of machine
+
+This set was re-recorded on different hardware from the one it was first taken on: Linux
+with reference BLAS/LAPACK 3.9.0 and PySCF 2.13.1, to macOS with Apple Accelerate and PySCF
+2.14.0. Running `check` across that move *before* changing anything else left 46 of the 52
+cases inside their own tolerances, and the six that moved did so only in the quantities named
+above — the grid-scale plateau on the four H2/HF cases at rel 0.53 against a 0.5 tolerance,
+one realization residual at 3.3e-11 against a 1e-11 floor, and one set of QP energies at rel
+1.5e-8 against a 1e-8 floor. The largest frontier shift anywhere in the sweep was 1e-9 eV.
+
+So the tolerances are marginally tight rather than wrong, and swapping the BLAS and a PySCF
+minor version does not move this calculation by anything physically meaningful. That is worth
+having measured: it means a future disagreement can be attributed to a code change without
+first having to rule out the machine. The published `hydrogen-631g` anchor below reproduces
+to all four recorded decimal places across the move.
+
 ## What is recorded
 
 One JSON file per case in [`data/`](data), plus `index.json` for the sweep. Each record
@@ -65,13 +81,13 @@ rather than filled in with a proxy:
 
 | Field | What it is |
 |---|---|
-| `provenance` | momentGW and Dyson commits (with the checkout path and dirty flag), PySCF/NumPy/SciPy versions, the BLAS NumPy was built against, host and thread environment |
+| `provenance` | momentGW and Dyson commits (with the checkout path and dirty flag), PySCF/NumPy/SciPy versions, the BLAS NumPy was built against, host and thread environment. A dependency installed from its pinned git URL has no repository to interrogate, so its commit is read from what pip recorded in `direct_url.json` and marked `"source": "pip direct_url"` |
 | `mean_field` | starting point, basis, auxiliary basis, SCF tolerance, total energy, and the **mean-field** HOMO–LUMO gap — the quantity that sets the smallest particle-hole denominator entering the dRPA integrand |
 | `auxiliary` | `naux_full`, `naux`, and whether compression fired. `discarded_norm` is `null`: the compression selects on an absolute eigenvalue cutoff and never reports what it dropped (Milestone 4.5) |
 | `eta0` | the Clenshaw-Curtis grid scale, the closed-form diagonal integral and the quadrature's error against it, the nested half/quarter-grid error estimate, the norms, singular values and condition of the resulting zeroth moment, and — under `oracle` — its **true** error against a dense eigendecomposition, with the spectrum and condition number of `Mtilde` |
 | `dd_moments` | per-order Frobenius and maximum norms of the density-density moments |
 | `se_moments` | the same for the hole and particle self-energy moments, plus `streaming_vs_staged_max_abs` |
-| `realization` | per sector: the number of moments supplied, the number the recurrence conserves, per-order norms of the moments the realized self-energy actually carries, and the per-order absolute and relative Frobenius and maximum-norm errors against the moments it was handed, from Dyson's `moment_errors` |
+| `realization` | per sector: the number of moments supplied, the order that was **requested** and the order that was **achieved** (`max_cycle_achieved`, `order_reduced`, and the moment counts for both), per-order norms of the moments the realized self-energy actually carries, and the per-order absolute and relative Frobenius and maximum-norm errors against the moments it was handed, from Dyson's `moment_errors`. Everything but the requested order is read at the achieved one, because that is the realization the Dyson solve actually used |
 | `moment_error` | momentGW's own scaled error between input and realized self-energy moments |
 | `green_function` | pole count, chemical potential, electron count and the particle-number error |
 | `results` | frontier HOMO/LUMO by Aufbau counting over multiplets, with weights, the threshold plateau, and a per-reference-orbital quasiparticle table |
@@ -166,15 +182,54 @@ opposite directions:
   the one number reported is uninformative in both directions. That is the argument for
   Milestone 2's certified interval, and it is now measured rather than asserted.
 
+## Three cases could not support the order they were asked for
+
+At `nmom_max = 7`, Dyson now stops the recurrence when an iteration produces an
+off-diagonal square with no real square root, and solves at the last order it completed.
+It fires on three of the fifty-two cases, always in one sector only:
+
+| case | sector | moments conserved | Dyson's own residual | momentGW `moment_error` |
+|---|---|---:|---:|---:|
+| `lithium-hydride` HF | hole | 8 → **6** | 5.5e-13 → 2.2e-14 | 3.6e-14 → **8.0e-8** |
+| `lithium-hydride` PBE | hole | 8 → **6** | 1.9e-13 → 1.6e-14 | 2.4e-14 → **6.1e-7** |
+| `hydrogen-631g` HF | particle | 8 → **6** | 1.8e-14 → 9.4e-15 | 2.9e-14 → 2.6e-14 |
+
+The two columns move in opposite directions, and that is the point. Dyson's residual is
+measured over the moments it undertook to conserve, so realizing six it can support instead
+of eight it cannot *improves* it by an order of magnitude. momentGW's `moment_error`
+compares against all eight moments it supplied, so it rises to 1e-7 — the honest size of two
+undelivered moments.
+
+The previous baseline recorded ~1e-14 for both. That number was not an accuracy: the
+recurrence was clipping a direction with no square root and reporting agreement over moments
+it was not conserving. Nothing about the calculation got worse here; a misreported quantity
+started being reported.
+
+The physical effect is small — the HOMO moves 5.5e-7 eV on lithium-hydride HF and 1.6e-6 eV
+on PBE, and the particle number is unchanged to five figures — but the self-energy is a
+visibly smaller object, 133 poles rather than 152 for lithium-hydride and 28 rather than 32
+for the anchor. Water and ozone support order 7 in both sectors and are untouched.
+
+`check.py` compares `max_cycle_achieved` exactly, so a case that silently starts or stops
+stepping down fails the check rather than hiding inside a residual that got smaller.
+
 ## Dependency pinning
 
 `pyproject.toml` pins Dyson to an immutable commit rather than `@master`. Two installs of
 the same momentGW commit previously resolved to whatever Dyson's default branch happened to
 be that day, so no recorded result could name the code that produced it.
 
-The pin is currently `mkakcl/dyson@ca60fe8`, which carries the corrected moment-error
-diagnostic (`mkakcl/dyson#1`) that upstream master does not yet have. This baseline is
-recorded against a diagnostic that reports the error over all conserved orders; before that
-fix the comparison silently dropped the two newest moments and returned exactly zero at the
-first iteration. Move the pin to a `BoothGroup/dyson` commit once the Milestone 1 work is
-upstreamed and accepted, and re-record.
+The pin is currently `mkakcl/dyson@054d4b5`, which carries the Milestone 1 realization work
+that upstream master does not have: the corrected moment-error diagnostic (`mkakcl/dyson#1`),
+the scale-aware `matrix_power` support policy (`#2`), and the feasibility validation and
+order step-down (`#3`) described above. Before `#1` the error comparison silently dropped the
+two newest moments and returned exactly zero at the first iteration.
+
+Pinning by URL created a second problem, which `run.py` now handles: a dependency installed
+from `git+...@<sha>` unpacks into `site-packages` with no `.git` beside it, so the commit
+cannot be read back out of a repository. It is recovered from pip's `direct_url.json`
+instead. Without that, honouring the pin is exactly the case in which a record cannot name
+the Dyson revision that produced it.
+
+This is still the fork. Move the pin to a `BoothGroup/dyson` commit once the Milestone 1 work
+is upstreamed and accepted, and re-record.

@@ -10,12 +10,12 @@
  "cpu_count": 12,
  "dd_moments": {
   "frobenius": [
-   0.48240859294555677,
-   0.9010887476267022
+   0.4824085929455569,
+   0.9010887476267032
   ],
   "max_abs": [
-   0.3027154885888013,
-   0.7202276964541319
+   0.3027154885888016,
+   0.7202276964541332
   ],
   "orders": [
    0,
@@ -23,44 +23,44 @@
   ]
  },
  "eta0": {
-  "condition": 2.43702125446356,
+  "condition": 2.4370212544635645,
   "diagonal_error": 0.0,
-  "diagonal_exact": 2.884862811493066,
-  "diagonal_quadrature": 2.884862811493066,
-  "frobenius": 0.48240859294555677,
-  "grid_scale": 1.3023461322531118,
-  "half_grid_difference": 0.0010722705363220145,
-  "max_abs": 0.3027154885888013,
+  "diagonal_exact": 2.8848628114930666,
+  "diagonal_quadrature": 2.8848628114930666,
+  "frobenius": 0.4824085929455569,
+  "grid_scale": 0.9792623326216454,
+  "half_grid_difference": 0.0007826360839927531,
+  "max_abs": 0.3027154885888016,
   "method": "clencur",
-  "nested_error_estimate": 0.0003056835336369651,
+  "nested_error_estimate": 0.0002196918780940092,
   "npoints": 48,
   "oracle": {
-   "absolute_error": 2.897045998734065e-16,
-   "max_abs_error": 2.7755575615628914e-16,
-   "mtilde_condition": 5.572950926112874,
-   "mtilde_max_eigenvalue": 5.142809458633307,
-   "mtilde_min_eigenvalue": 0.9228162111630884,
-   "relative_error": 6.005378098770761e-16
+   "absolute_error": 2.158514065424926e-16,
+   "max_abs_error": 1.6653345369377348e-16,
+   "mtilde_condition": 5.57295092611288,
+   "mtilde_max_eigenvalue": 5.142809458633318,
+   "mtilde_min_eigenvalue": 0.9228162111630893,
+   "relative_error": 4.474451941755793e-16
   },
-  "quarter_grid_difference": 0.0008699249782647294,
+  "quarter_grid_difference": 0.0006310766733733104,
   "rank_1e-10": 3,
   "shape": [
    3,
    3
   ],
   "singular_values_head": [
-   0.35809700364887637,
-   0.2879116013881976,
-   0.14694045158325922
+   0.35809700364887664,
+   0.28791160138819744,
+   0.14694045158325905
   ],
   "singular_values_tail": [
-   0.35809700364887637,
-   0.2879116013881976,
-   0.14694045158325922
+   0.35809700364887664,
+   0.28791160138819744,
+   0.14694045158325905
   ]
  },
  "green_function": {
-  "chempot": -0.2948654162854035,
+  "chempot": -0.29486541628540436,
   "converged_flag": true,
   "converged_flag_note": "momentGW returns True unconditionally for one-shot GW; it is not a numerical convergence result. Milestone 1.4 replaces it.",
   "n_poles": 12,
@@ -69,28 +69,28 @@
   "se_n_poles": 8
  },
  "load_average": [
-  36.0,
-  34.63,
-  27.77
+  4.5,
+  3.22,
+  2.65
  ],
  "mean_field": {
   "auxbasis": null,
   "basis": "6-31g",
   "conv_tol": 1e-10,
-  "e_tot": -1.1267569307199086,
-  "gap_ev": 22.70274123431384,
-  "homo_ha": -0.5958189313641444,
-  "lumo_ha": 0.2384914205261821,
+  "e_tot": -1.1267569307199077,
+  "gap_ev": 22.70274123431385,
+  "homo_ha": -0.5958189313641448,
+  "lumo_ha": 0.23849142052618227,
   "nelectron": 2,
   "nmo": 4,
   "nocc": 1,
-  "scf_wall_seconds": 0.072,
+  "scf_wall_seconds": 0.057,
   "xc": "hf"
  },
  "moment_error": {
   "definition": "momentGW scaled error between input and realized self-energy moments",
-  "hole": 5.689893001203927e-16,
-  "particle": 2.275957200481571e-15
+  "hole": 1.762479051592436e-15,
+  "particle": 1.5844498867825436e-15
  },
  "options": {
   "compression": "ia",
@@ -102,106 +102,112 @@
   "optimise_chempot": false,
   "polarizability": "drpa"
  },
- "peak_memory_gb": 0.2282,
+ "peak_memory_gb": 0.217,
  "provenance": {
   "blas": {
    "blas": {
-    "detection method": "pkgconfig",
-    "name": "blas",
-    "version": "3.9.0"
+    "detection method": "system",
+    "name": "accelerate",
+    "version": "unknown"
    },
    "lapack": {
-    "detection method": "pkgconfig",
-    "name": "lapack",
-    "version": "3.9.0"
+    "detection method": "system",
+    "name": "accelerate",
+    "version": "unknown"
    }
   },
   "code": {
    "baseline_script": {
-    "branch": "claude/m0-baseline",
-    "commit": "0d63248d4da30b74036b001e35015d48834fd02b",
+    "branch": "worktree-dyson-pin-m1",
+    "commit": "c03432491ade02f36e40367a5ac7e5f8e808c129",
     "dirty": true,
-    "path": "/home/marcusallen/Documents/moment representations/monomial_moments/monomial_GW/.claude/worktrees/m0-baseline/baseline"
+    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/dyson-pin-m1/baseline"
    },
    "dyson": {
-    "branch": "master",
-    "commit": "ca60fe85195db40cedb6b52c6e538de8692e06ac",
+    "branch": null,
+    "commit": "054d4b5f9464946a2d972f4bf3e1d058529b596a",
     "dirty": false,
-    "path": "/home/marcusallen/Documents/moment representations/monomial_moments/dyson/dyson/__init__.py",
+    "path": "/Users/marcusallen/miniconda3/envs/mgw-monomial/lib/python3.11/site-packages/dyson/__init__.py",
+    "requested_revision": "054d4b5f9464946a2d972f4bf3e1d058529b596a",
+    "source": "pip direct_url",
+    "url": "https://github.com/mkakcl/dyson",
     "version": "1.0.0"
    },
    "momentGW": {
-    "branch": "claude/m0-baseline",
-    "commit": "0d63248d4da30b74036b001e35015d48834fd02b",
+    "branch": "worktree-dyson-pin-m1",
+    "commit": "c03432491ade02f36e40367a5ac7e5f8e808c129",
     "dirty": true,
-    "path": "/home/marcusallen/Documents/moment representations/monomial_moments/monomial_GW/.claude/worktrees/m0-baseline/momentGW/__init__.py",
+    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/dyson-pin-m1/momentGW/__init__.py",
     "version": "1.0.0"
    }
   },
   "host": {
-   "conda_env": "monomial_moments",
+   "conda_env": null,
    "cpu_count": 12,
    "machine": "x86_64",
-   "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+   "platform": "macOS-15.7.7-x86_64-i386-64bit",
    "threads": {
     "MKL_NUM_THREADS": null,
     "OMP_NUM_THREADS": null,
     "OPENBLAS_NUM_THREADS": null
    }
   },
-  "recorded_utc": "2026-07-30T16:34:51Z",
+  "recorded_utc": "2026-07-31T00:19:02Z",
   "versions": {
    "numpy": "2.3.5",
-   "pyscf": "2.13.1",
+   "pyscf": "2.14.0",
    "python": "3.11.15",
    "scipy": "1.17.1"
   }
  },
  "qp_energy_by_overlap_ha": [
-  -0.5897308325708074,
-  0.24014975895590665,
-  0.752570808635382,
-  1.3368495243847305
+  -0.5897308325708075,
+  0.24014975895590893,
+  0.7525708086353826,
+  1.3368495243847334
  ],
  "realization": {
   "hole": {
    "errors": {
     "absolute_frobenius": [
-     1.5027761952436256e-16,
-     3.97320777587206e-16
+     2.1422788862468214e-16,
+     7.745194390049649e-16
     ],
     "absolute_max": [
-     1.0408340855860843e-16,
-     1.942890293094024e-16
+     1.1796119636642288e-16,
+     4.3021142204224816e-16
     ],
     "chempot": 0.0,
-    "max_relative_frobenius": 1.823812451325229e-15,
+    "max_relative_frobenius": 3.5552588143735935e-15,
     "orders": [
      0,
      1
     ],
     "relative_frobenius": [
-     1.627654591689254e-15,
-     1.823812451325229e-15
+     2.3202989752664354e-15,
+     3.5552588143735935e-15
     ],
     "relative_max": [
-     2.1366702955557036e-15,
-     1.7495868320977704e-15
+     2.421559668296465e-15,
+     3.87408512821648e-15
     ],
-    "total_scaled": 5.23941425186927e-16
+    "total_scaled": 1.0603261806523954e-15
    },
    "max_cycle": 0,
+   "max_cycle_achieved": 0,
    "moments_supplied": 2,
    "n_poles": 8,
-   "nmom_conserved": 2,
+   "nmom_conserved_achieved": 2,
+   "nmom_conserved_requested": 2,
+   "order_reduced": false,
    "reconstructed_moments": {
     "frobenius": [
-     0.09232770901865452,
-     0.2178517737931343
+     0.09232770901865484,
+     0.21785177379313544
     ],
     "max_abs": [
-     0.048712900991370905,
-     0.11104852056782331
+     0.048712900991370954,
+     0.11104852056782426
     ],
     "orders": [
      0,
@@ -213,41 +219,44 @@
   "particle": {
    "errors": {
     "absolute_frobenius": [
-     1.0249517864991105e-15,
-     2.723704465211565e-15
+     4.716577083060245e-16,
+     1.419419242194207e-15
     ],
     "absolute_max": [
-     9.159339953157541e-16,
-     2.275957200481571e-15
+     3.3306690738754696e-16,
+     1.1102230246251565e-15
     ],
     "chempot": 0.0,
-    "max_relative_frobenius": 5.526831480214137e-15,
+    "max_relative_frobenius": 2.6372210865868175e-15,
     "orders": [
      0,
      1
     ],
     "relative_frobenius": [
-     5.526831480214137e-15,
-     5.060528021434158e-15
+     2.543312480146258e-15,
+     2.6372210865868175e-15
     ],
     "relative_max": [
-     7.893050414793942e-15,
-     6.945441884322789e-15
+     2.870200150834156e-15,
+     3.3880204313769615e-15
     ],
-    "total_scaled": 3.527775591459866e-15
+    "total_scaled": 1.8609098262528812e-15
    },
    "max_cycle": 0,
+   "max_cycle_achieved": 0,
    "moments_supplied": 2,
    "n_poles": 8,
-   "nmom_conserved": 2,
+   "nmom_conserved_achieved": 2,
+   "nmom_conserved_requested": 2,
+   "order_reduced": false,
    "reconstructed_moments": {
     "frobenius": [
-     0.18545016075999382,
-     0.53822534993881
+     0.1854501607599951,
+     0.5382253499388141
     ],
     "max_abs": [
-     0.11604309451755332,
-     0.3276907702041007
+     0.11604309451755476,
+     0.3276907702041049
     ],
     "orders": [
      0,
@@ -258,30 +267,30 @@
   }
  },
  "results": {
-  "ea_ev": -6.534807847830091,
+  "ea_ev": -6.5348078478301534,
   "frontier": {
-   "chemical_potential_ha": -0.2948654162854035,
+   "chemical_potential_ha": -0.29486541628540436,
    "definition": "physical correlated-spectrum multiplets split at the Aufbau chemical potential; independent of the reference MO ordering, so it stays correct through a crossing",
    "degeneracy_atol_ha": 1e-06,
-   "electron_count_error": -0.002366051546148995,
-   "gap_ha": 0.829880591526714,
+   "electron_count_error": -0.002366051546149439,
+   "gap_ha": 0.8298805915267164,
    "homo": {
     "dominant_mo_index": 0,
     "dominant_mo_weight": 0.9736491388449001,
-    "energy_ev": -16.04739346625232,
-    "energy_ha": -0.5897308325708074,
+    "energy_ev": -16.047393466252323,
+    "energy_ha": -0.5897308325708075,
     "multiplicity": 1,
     "weight": 0.9736564349518537,
     "weight_per_state": 0.9736564349518537
    },
    "lumo": {
     "dominant_mo_index": 1,
-    "dominant_mo_weight": 0.9931420662104766,
-    "energy_ev": 6.534807847830091,
-    "energy_ha": 0.24014975895590665,
+    "dominant_mo_weight": 0.9931420662104784,
+    "energy_ev": 6.5348078478301534,
+    "energy_ha": 0.24014975895590893,
     "multiplicity": 1,
-    "weight": 0.9931463937435305,
-    "weight_per_state": 0.9931463937435305
+    "weight": 0.9931463937435323,
+    "weight_per_state": 0.9931463937435323
    },
    "n_multiplets": 12,
    "n_poles": 12,
@@ -293,13 +302,13 @@
     0.3,
     0.5
    ],
-   "total_weight": 3.999999999999996
+   "total_weight": 4.000000000000001
   },
-  "gap_ev": 22.58220131408241,
-  "homo_ha": -0.5897308325708074,
+  "gap_ev": 22.582201314082475,
+  "homo_ha": -0.5897308325708075,
   "homo_index": 0,
-  "ip_ev": 16.04739346625232,
-  "lumo_ha": 0.24014975895590665,
+  "ip_ev": 16.047393466252323,
+  "lumo_ha": 0.24014975895590893,
   "orbital_table": {
    "mo_index": [
     0,
@@ -320,49 +329,49 @@
     0.0
    ],
    "qp_energy_ha": [
-    -0.5897308325708074,
-    0.24014975895590665,
-    0.752570808635382,
-    1.3368495243847305
+    -0.5897308325708075,
+    0.24014975895590893,
+    0.7525708086353826,
+    1.3368495243847334
    ],
    "qp_weight": [
     0.9736491388449001,
-    0.9931420662104766,
-    0.9831601811756105,
+    0.9931420662104784,
+    0.9831601811756123,
     0.9472879887671345
    ],
    "reference_energy_ha": [
-    -0.5958189313641444,
-    0.2384914205261821,
-    0.7747344042510429,
-    1.4044218590674982
+    -0.5958189313641448,
+    0.23849142052618227,
+    0.774734404251042,
+    1.4044218590675006
    ],
    "reference_homo_index": 0,
    "reference_lumo_index": 1
   },
   "qp_energies_ha": [
-   -0.5897308325708074,
-   0.24014975895590665,
-   0.752570808635382,
-   1.3368495243847305
+   -0.5897308325708075,
+   0.24014975895590893,
+   0.7525708086353826,
+   1.3368495243847334
   ],
   "qp_weights": [
    0.9736491388449001,
-   0.9931420662104766,
-   0.9831601811756105,
+   0.9931420662104784,
+   0.9831601811756123,
    0.9472879887671345
   ]
  },
- "schema_version": "1.0",
+ "schema_version": "1.1",
  "se_moments": {
   "hole": {
    "frobenius": [
-    0.09232770901865463,
-    0.21785177379313453
+    0.0923277090186547,
+    0.21785177379313486
    ],
    "max_abs": [
-    0.04871290099137101,
-    0.1110485205678235
+    0.048712900991370996,
+    0.11104852056782383
    ],
    "orders": [
     0,
@@ -371,12 +380,12 @@
   },
   "particle": {
    "frobenius": [
-    0.1854501607599946,
-    0.5382253499388122
+    0.18545016075999476,
+    0.5382253499388132
    ],
    "max_abs": [
-    0.11604309451755423,
-    0.327690770204103
+    0.11604309451755443,
+    0.3276907702041038
    ],
    "orders": [
     0,
@@ -400,14 +409,14 @@
  },
  "timings_seconds": {
   "dd_moments": 0.0001,
-  "dyson": 0.0286,
-  "eta0": 0.0143,
+  "dyson": 0.0259,
+  "eta0": 0.0135,
   "eta0_oracle": 0.0001,
-  "integrals": 0.0011,
-  "realization_diagnostics": 0.0203,
-  "se_moments_from_dd": 0.0031,
-  "se_moments_streaming": 0.0172,
+  "integrals": 0.0012,
+  "realization_diagnostics": 0.0211,
+  "se_moments_from_dd": 0.0038,
+  "se_moments_streaming": 0.0162,
   "se_static": 0.0003,
-  "total": 0.0867
+  "total": 0.0847
  }
 }

@@ -71,11 +71,17 @@ conjugation, momentum, and normalization conventions require separate validation
 
 ## Milestone 1 - Repair Dyson realization and error reporting
 
-**Status: Planned - first implementation milestone**
+**Status: In progress - 1.1 to 1.3 implemented in `mkakcl/dyson` and consumed here through
+the pin; not yet upstreamed, and 1.4 not started.**
 
 Dyson is an external dependency, so these changes should be made upstream in
 `BoothGroup/dyson`, tested there, and then consumed here through an immutable commit.
 A private runtime patch in momentGW is not an acceptable final solution.
+
+The pin currently points at the fork, so the milestone is consumed but not accepted. The
+baseline has been re-recorded against it: see [`baseline/README.md`](baseline/README.md) for
+what changed, in particular the three cases whose realization now steps down from the order
+they were asked for.
 
 ### 1.1 Reconstructed-moment diagnostic
 
