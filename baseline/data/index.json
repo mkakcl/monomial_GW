@@ -214,58 +214,61 @@
  "provenance": {
   "blas": {
    "blas": {
-    "detection method": "pkgconfig",
-    "name": "blas",
-    "version": "3.9.0"
+    "detection method": "system",
+    "name": "accelerate",
+    "version": "unknown"
    },
    "lapack": {
-    "detection method": "pkgconfig",
-    "name": "lapack",
-    "version": "3.9.0"
+    "detection method": "system",
+    "name": "accelerate",
+    "version": "unknown"
    }
   },
   "code": {
    "baseline_script": {
-    "branch": "claude/m0-baseline",
-    "commit": "0d63248d4da30b74036b001e35015d48834fd02b",
+    "branch": "worktree-dyson-pin-m1",
+    "commit": "c03432491ade02f36e40367a5ac7e5f8e808c129",
     "dirty": true,
-    "path": "/home/marcusallen/Documents/moment representations/monomial_moments/monomial_GW/.claude/worktrees/m0-baseline/baseline"
+    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/dyson-pin-m1/baseline"
    },
    "dyson": {
-    "branch": "master",
-    "commit": "ca60fe85195db40cedb6b52c6e538de8692e06ac",
+    "branch": null,
+    "commit": "054d4b5f9464946a2d972f4bf3e1d058529b596a",
     "dirty": false,
-    "path": "/home/marcusallen/Documents/moment representations/monomial_moments/dyson/dyson/__init__.py",
+    "path": "/Users/marcusallen/miniconda3/envs/mgw-monomial/lib/python3.11/site-packages/dyson/__init__.py",
+    "requested_revision": "054d4b5f9464946a2d972f4bf3e1d058529b596a",
+    "source": "pip direct_url",
+    "url": "https://github.com/mkakcl/dyson",
     "version": "1.0.0"
    },
    "momentGW": {
-    "branch": "claude/m0-baseline",
-    "commit": "0d63248d4da30b74036b001e35015d48834fd02b",
+    "branch": "worktree-dyson-pin-m1",
+    "commit": "c03432491ade02f36e40367a5ac7e5f8e808c129",
     "dirty": true,
-    "path": "/home/marcusallen/Documents/moment representations/monomial_moments/monomial_GW/.claude/worktrees/m0-baseline/momentGW/__init__.py",
+    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/dyson-pin-m1/momentGW/__init__.py",
     "version": "1.0.0"
    }
   },
   "host": {
-   "conda_env": "monomial_moments",
+   "conda_env": null,
    "cpu_count": 12,
    "machine": "x86_64",
-   "platform": "Linux-6.8.0-124-generic-x86_64-with-glibc2.35",
+   "platform": "macOS-15.7.7-x86_64-i386-64bit",
    "threads": {
     "MKL_NUM_THREADS": null,
     "OMP_NUM_THREADS": null,
     "OPENBLAS_NUM_THREADS": null
    }
   },
-  "recorded_utc": "2026-07-30T16:34:51Z",
+  "recorded_utc": "2026-07-31T00:19:02Z",
   "versions": {
    "numpy": "2.3.5",
-   "pyscf": "2.13.1",
+   "pyscf": "2.14.0",
    "python": "3.11.15",
    "scipy": "1.17.1"
   }
  },
- "schema_version": "1.0",
+ "schema_version": "1.1",
  "sweep": {
   "compression": [
    "ia",

@@ -16,6 +16,7 @@ the norms and spectra that a comparison actually reads.
 
 import argparse
 import datetime
+import importlib.metadata
 import json
 import os
 import platform
@@ -60,20 +61,63 @@ def _git(path, *args):
     return out.stdout.strip()
 
 
+def _pinned_commit(module):
+    """Get the commit pip resolved when it installed a module from a version-control URL.
+
+    A dependency pinned in `pyproject.toml` as `name @ git+...@<sha>` unpacks into
+    site-packages with no `.git` beside it, so `_git` cannot name its commit. pip records
+    what it resolved in `direct_url.json` (PEP 610), which is then the only surviving
+    statement of which revision is installed.
+
+    Returns
+    -------
+    record : dict or None
+        The commit, the revision that was requested and the source URL, or
+        `None` if the module was not installed from version control.
+    """
+    try:
+        names = importlib.metadata.packages_distributions().get(module.__name__, [])
+        for name in names:
+            text = importlib.metadata.distribution(name).read_text("direct_url.json")
+            if text is None:
+                continue
+            direct_url = json.loads(text)
+            commit = (direct_url.get("vcs_info") or {}).get("commit_id")
+            if commit:
+                return {
+                    "commit": commit,
+                    "requested_revision": direct_url["vcs_info"].get("requested_revision"),
+                    "url": direct_url.get("url"),
+                }
+    except (importlib.metadata.PackageNotFoundError, OSError, ValueError, KeyError):
+        return None
+    return None
+
+
 def _repo_state(module):
     """Describe the checkout an imported module was loaded from.
 
     The baseline is normally recorded from a worktree while the installed package resolves
     to the main checkout, so the path is recorded and not assumed.
+
+    A module installed from a pinned git URL rather than checked out has no repository to
+    interrogate. Its commit is recovered from what pip recorded instead, because a record
+    that cannot name the revision of a pinned dependency defeats the purpose of pinning it.
     """
     path = os.path.abspath(module.__file__)
-    return {
+    record = {
         "path": path,
         "commit": _git(path, "rev-parse", "HEAD"),
         "branch": _git(path, "rev-parse", "--abbrev-ref", "HEAD"),
         "dirty": bool(_git(path, "status", "--porcelain", "--untracked-files=no")),
         "version": getattr(module, "__version__", None),
     }
+    if record["commit"] is None:
+        pinned = _pinned_commit(module)
+        if pinned is not None:
+            record.update(pinned)
+            record["source"] = "pip direct_url"
+    return record
 
 
 def _blas_info():
@@ -474,15 +518,26 @@ def run_case(mf, mean_field, system, nmom_max, *, compression, compression_tol, 
         for sector, moments in (("hole", th), ("particle", tp)):
             solver = MBLSE(se_static, np.array(moments))
             solver.kernel()
+            # The order that ran is not always the order that was asked for: Dyson steps the
+            # recurrence down when an iteration produces an off-diagonal square with no real
+            # square root, and solves at the last one it completed. Everything below is read
+            # at the achieved order, because that is the realization the Dyson solve above
+            # actually used; the requested order is recorded beside it, not in place of it.
+            achieved = solver.max_cycle
+            if solver.max_cycle_achieved is not None:
+                achieved = solver.max_cycle_achieved
             # The moments the realized self-energy actually carries, as distinct from the
             # moments it was asked to carry. Recorded in full alongside the errors, because
             # an error norm cannot say which order or which block a discrepancy sits in.
-            reconstructed[sector] = np.asarray(solver.reconstruct_moments(solver.max_cycle))
+            reconstructed[sector] = np.asarray(solver.reconstruct_moments(achieved))
             realization[sector] = {
                 "requested_nmom_max": nmom_max,
                 "moments_supplied": int(np.asarray(moments).shape[0]),
                 "max_cycle": int(solver.max_cycle),
-                "nmom_conserved": int(solver.nmom_conserved(solver.max_cycle)),
+                "max_cycle_achieved": int(achieved),
+                "order_reduced": int(achieved) != int(solver.max_cycle),
+                "nmom_conserved_requested": int(solver.nmom_conserved(solver.max_cycle)),
+                "nmom_conserved_achieved": int(solver.nmom_conserved(achieved)),
                 "n_poles": int(np.asarray(solver.result.eigvals).size),
                 "reconstructed_moments": _per_order(reconstructed[sector]),
                 "errors": _moment_errors(solver.moment_errors()),
@@ -492,7 +547,7 @@ def run_case(mf, mean_field, system, nmom_max, *, compression, compression_tol, 
     nelectron = float(gf.occupied().moment(0).trace() * 2)
 
     record = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "case_id": identifier,
         "status": "complete",
         "system": system.to_dict(),
@@ -695,7 +750,7 @@ def main():
     print(f"{len(cases)} cases")
 
     index = {
-        "schema_version": "1.0",
+        "schema_version": "1.1",
         "provenance": meta,
         "sweep": {
             "systems": args.systems,
@@ -730,7 +785,7 @@ def main():
         except Exception as error:
             # A failed case is a recorded result, not a reason to abandon the sweep.
             record = {
-                "schema_version": "1.0",
+                "schema_version": "1.1",
                 "case_id": identifier,
                 "status": "failed",
                 "system": system.to_dict(),
