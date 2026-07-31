@@ -72,7 +72,8 @@ conjugation, momentum, and normalization conventions require separate validation
 ## Milestone 1 - Repair Dyson realization and error reporting
 
 **Status: In progress - 1.1 to 1.3 implemented in `mkakcl/dyson` and consumed here through
-the pin; not yet upstreamed, and 1.4 not started.**
+the pin; not yet upstreamed. 1.4 is implemented except for the two parts that depend on
+that upstreaming.**
 
 Dyson is an external dependency, so these changes should be made upstream in
 `BoothGroup/dyson`, tested there, and then consumed here through an immutable commit.
@@ -119,11 +120,21 @@ they were asked for.
 
 ### 1.4 momentGW integration
 
-- [ ] Pass explicit Dyson numerical options from `momentGW/gw.py`.
-- [ ] Replace unconditional single-shot `conv=True` with a numerical convergence
+- [ ] Pass explicit Dyson numerical options from `momentGW/gw.py`. The `dyson_opts`
+  option states the three MBLSE accepts. The scale-aware tolerances from 1.2 are not
+  among them: `MBLSE._options` does not accept `atol`, `rtol`, `neg_atol` or `neg_rtol`,
+  and `set_options` raises on anything it does not know, so the `matrix_power` calls
+  inside the recurrence take the library defaults. Blocked on widening that option
+  surface upstream.
+- [x] Replace unconditional single-shot `conv=True` with a numerical convergence
   result that includes realization and particle-number gates.
-- [ ] Store structured diagnostics on the GW object instead of only writing log text.
-- [ ] Pin momentGW to the accepted Dyson commit.
+- [x] Store structured diagnostics on the GW object instead of only writing log text.
+  `gw.dyson_diagnostics` carries them and `gw.dyson_solvers` retains the solvers, so
+  `baseline/run.py` no longer rebuilds a second pair to read them off.
+- [ ] Pin momentGW to the accepted Dyson commit. Blocked: the pin is still the fork.
+
+Restricted molecular only. The unrestricted and periodic solvers share this kernel but
+override `solve_dyson` without gating it, and keep the unconditional flag until they do.
 
 ### Acceptance gate
 
