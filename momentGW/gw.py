@@ -172,7 +172,26 @@ class GW(BaseGW):
         Type of polarizability to use, can be one of `("drpa",
         "drpa-exact", "dtda", "thc-dtda"). Default value is `"drpa"`.
     npoints : int, optional
-        Number of numerical integration points. Default value is `48`.
+        Number of numerical integration points. Only used by the legacy
+        Clenshaw-Curtis quadrature (`eta0_method="clencur"`). Default
+        value is `48`.
+    eta0_method : str, optional
+        Method for the zeroth moment of the dRPA density-density
+        response, one of `("clencur", "hht")`. `"clencur"` is the
+        legacy Clenshaw-Curtis quadrature; `"hht"` is a certified
+        rational approximation of the inverse square root (see
+        `momentGW.eta0`). Default value is `"clencur"`.
+    eta0_tol : float, optional
+        Requested scalar relative error of the rational approximation
+        over the certified spectral interval, for
+        `eta0_method="hht"`. Default value is `1e-14`.
+    eta0_n_poles : int, optional
+        Fixed pole count for `eta0_method="hht"`, overriding selection
+        against `eta0_tol`. Default value is `None`.
+    eta0_check_refinement : bool, optional
+        If `True`, repeat the `"hht"` zeroth moment with four more poles
+        and record the difference as a secondary regression signal.
+        Default value is `False`.
     optimise_chempot : bool, optional
         If `True`, optimise the chemical potential by shifting the
         position of the poles in the self-energy relative to those in

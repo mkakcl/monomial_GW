@@ -1,9 +1,10 @@
 """Construct RPA moments."""
 
 import numpy as np
+import scipy.linalg
 import scipy.optimize
 
-from momentGW import logging, mpi_helper, util
+from momentGW import eta0, logging, mpi_helper, util
 from momentGW.tda import dTDA
 
 
@@ -36,14 +37,25 @@ class dRPA(dTDA):
     @logging.with_timer("Numerical integration")
     @logging.with_status("Performing numerical integration")
     def build_zeroth_dd_moment(self, m0=None):
-        """Build the zeroth moment by optimising the quadrature and perform the integration for
-        the zeroth moment.
+        """Build the zeroth moment of the density-density response.
+
+        Dispatches on `gw.eta0_method`: `"clencur"` optimises the legacy
+        Clenshaw-Curtis quadrature and performs the numerical integration,
+        while `"hht"` applies a certified rational approximation of the
+        inverse square root (see `momentGW.eta0`).  Both produce the same
+        RI-projected object.
 
         Returns
         -------
         zeroth moment : numpy.ndarray
             Zeroth moment of the density-density response.
         """
+
+        method = getattr(self.gw, "eta0_method", "clencur")
+        if method == "hht":
+            return self._build_zeroth_dd_moment_hht()
+        if method != "clencur":
+            raise ValueError(f"Unknown eta0_method {method!r}: expected one of ('clencur', 'hht')")
 
         p0, p1 = self.mpi_slice(self.nov)
 
@@ -77,6 +89,250 @@ class dRPA(dTDA):
             )
             integral = np.delete(integral, [1, 2], 0)
         return integral[0]
+
+    def _hht_apply(self, shifts, weights, d, Lia, collect_residuals=False):
+        """Apply the rational approximation of the inverse square root through Woodbury.
+
+        Each pole contributes ``w_j (I + 4 G_j)^{-1} Y_j`` with
+        ``Y_j = Lia * f_j`` and the auxiliary-space Gram
+        ``G_j = Y_j Lia^T``, where ``f_j = d / (d^2 + s_j)``.  Only the Gram
+        is reduced across ranks; no particle-hole squared intermediate is
+        formed, and there is no bare-`Lia` term to cancel against.
+
+        Parameters
+        ----------
+        shifts : numpy.ndarray
+            Pole shifts.
+        weights : numpy.ndarray
+            Weights.
+        d : numpy.ndarray
+            Local slice of the particle-hole energy differences.
+        Lia : numpy.ndarray
+            Local slice of the ``(aux, W occ, W vir)`` array.
+        collect_residuals : bool, optional
+            Whether to compute the relative residual of every
+            auxiliary-space Cholesky solve.  Default value is `False`.
+
+        Returns
+        -------
+        integral : numpy.ndarray
+            RI-projected zeroth moment contribution, shape
+            ``(naux, nov_local)``.
+        residuals : list of float
+            Per-pole relative solve residuals (empty unless
+            `collect_residuals`).
+        """
+
+        naux = Lia.shape[0]
+        integral = np.zeros_like(Lia)
+        eye = np.eye(naux)
+        d_sq = d * d
+        residuals = []
+
+        for shift, weight in zip(shifts, weights):
+            f = d / (d_sq + shift)
+            Y = Lia * f[None]
+            gram = np.dot(Y, Lia.T)
+            gram = mpi_helper.allreduce(gram)
+            A = eye + 4.0 * gram
+            cho = scipy.linalg.cho_factor(A)
+            X = scipy.linalg.cho_solve(cho, Y)
+
+            if collect_residuals:
+                norms = np.array([np.sum((np.dot(A, X) - Y) ** 2), np.sum(Y * Y)])
+                norms = mpi_helper.allreduce(norms)
+                residuals.append(float(np.sqrt(norms[0] / norms[1])) if norms[1] > 0 else 0.0)
+
+            integral += weight * X
+
+        return integral, residuals
+
+    def _estimate_mtilde_lambda_max(self, d, Lia, n_iter=12):
+        """Estimate the largest eigenvalue of ``Mtilde`` by power iteration.
+
+        Reported only to show how loose the rigorous upper bound of the
+        certified interval is; it plays no role in the certificate itself.
+        The action ``v -> d^2 v + 4 W (W^T v)`` is evaluated without forming
+        any particle-hole squared matrix.
+
+        Parameters
+        ----------
+        d : numpy.ndarray
+            Local slice of the particle-hole energy differences.
+        Lia : numpy.ndarray
+            Local slice of the ``(aux, W occ, W vir)`` array.
+        n_iter : int, optional
+            Number of power iterations.  Default value is `12`.
+
+        Returns
+        -------
+        lambda_max : float
+            Estimate of (and lower bound on) the largest eigenvalue.
+        """
+
+        p0, p1 = self.mpi_slice(self.nov)
+        sqrt_d = np.sqrt(d)
+
+        # Deterministic start vector, replicated identically on every rank
+        v = np.random.default_rng(0).standard_normal(self.nov)
+        v /= np.linalg.norm(v)
+
+        lambda_max = 0.0
+        for _ in range(n_iter):
+            # W^T v, reduced over the distributed particle-hole index
+            t = np.dot(Lia * sqrt_d[None], v[p0:p1])
+            t = mpi_helper.allreduce(t)
+
+            # Local rows of Mtilde v, then reassemble the replicated vector
+            u = np.zeros_like(v)
+            u[p0:p1] = d * d * v[p0:p1] + 4.0 * sqrt_d * np.dot(t, Lia)
+            u = mpi_helper.allreduce(u)
+
+            lambda_max = float(np.dot(v, u))
+            norm = np.linalg.norm(u)
+            if norm == 0:
+                break
+            v = u / norm
+
+        return lambda_max
+
+    @logging.with_status("Performing certified rational approximation")
+    def _build_zeroth_dd_moment_hht(self):
+        """Build the zeroth moment through a certified HHT inverse square root.
+
+        Computes the same RI-projected object as the Clenshaw-Curtis route,
+        ``eta0 V = D^{1/2} Mtilde^{-1/2} W``, through the rational
+        approximation layer in `momentGW.eta0`: a rigorous spectral enclosure
+        of ``Mtilde``, pole selection against `gw.eta0_tol` certified by the
+        measured scalar error, and one auxiliary-space Cholesky solve per
+        pole with its residual checked.  Structured diagnostics are stored on
+        `gw.eta0_diagnostics`.
+
+        Returns
+        -------
+        integral : numpy.ndarray
+            Zeroth moment of the density-density response, shape
+            ``(naux, nov_local)``.
+        """
+
+        p0, p1 = self.mpi_slice(self.nov)
+        naux = self.naux
+
+        # Restricted molecular scope only.  The unrestricted and periodic
+        # solvers override `build_zeroth_dd_moment` wholesale and never reach
+        # this dispatch; the guard is here so a refactor cannot silently
+        # widen the scope.
+        if type(self) is not dRPA:
+            raise NotImplementedError(
+                "eta0_method='hht' is validated for the restricted molecular dRPA only"
+            )
+
+        # An empty particle-hole space has nothing to screen
+        if self.nov == 0:
+            return np.zeros((naux, 0))
+
+        if self.d is None:
+            self._build_d()
+        d = self.d
+        Lia = self.integrals.Lia
+
+        # Full gap vector, replicated on every rank as in the legacy route
+        d_full = util.build_1h1p_energies(self.mo_energy_w, self.mo_occ_w).ravel()
+
+        # Rigorous norm bounds on the coupling term 4 W W^T with
+        # W = D^{1/2} V:  ||W W^T||_2 <= min(||W||_F^2, ||W||_1 ||W||_inf)
+        sqrt_d = np.sqrt(d)
+        w_frob_sq = float(mpi_helper.allreduce(np.asarray(np.sum(d * np.sum(Lia * Lia, axis=0)))))
+        col_sums = mpi_helper.allreduce(np.sum(np.abs(Lia) * sqrt_d[None], axis=1))
+        w_one = float(np.max(col_sums)) if col_sums.size else 0.0
+        row_sums = sqrt_d * np.sum(np.abs(Lia), axis=0)
+        w_inf_local = float(np.max(row_sums)) if row_sums.size else 0.0
+        w_inf = float(
+            mpi_helper.allreduce(np.asarray(w_inf_local), op=getattr(mpi_helper.mpi, "MAX", None))
+        )
+        coupling_bound = 4.0 * min(w_frob_sq, w_one * w_inf)
+
+        # Certified spectral enclosure and pole selection against the
+        # requested tolerance.  A fixed pole count is an instruction, so a
+        # tolerance miss there is reported, not raised.
+        lmin, lmax = eta0.certified_interval(d_full, coupling_bound)
+        tol = self.gw.eta0_tol
+        n_poles_fixed = self.gw.eta0_n_poles
+        shifts, weights, delta, n_estimate = eta0.select_poles(
+            lmin, lmax, tol, n_poles=n_poles_fixed
+        )
+        if n_poles_fixed is not None and delta > tol:
+            logging.warn(
+                f"Fixed eta0_n_poles = {n_poles_fixed} achieves scalar error "
+                f"[bad]{delta:.3e}[/] against tolerance {tol:.3e}"
+            )
+
+        # Apply the rational approximation, checking every solve
+        integral, residuals = self._hht_apply(shifts, weights, d, Lia, collect_residuals=True)
+
+        if integral.shape != (naux, p1 - p0):
+            raise RuntimeError(
+                f"Unexpected local eta0 shape {integral.shape}: expected {(naux, p1 - p0)}"
+            )
+
+        # Optional secondary regression signal: repeat with four more poles.
+        # This is not the accuracy certificate -- the measured scalar error
+        # is -- it exists to catch a defect the scalar layer cannot see.
+        refinement = None
+        if self.gw.eta0_check_refinement:
+            shifts_ref, weights_ref = eta0.hht_coefficients(lmin, lmax, shifts.size + 4)
+            delta_ref = eta0.scalar_error(shifts_ref, weights_ref, lmin, lmax)
+            integral_ref, _ = self._hht_apply(shifts_ref, weights_ref, d, Lia)
+            diff = np.array([np.max(np.abs(integral - integral_ref))])
+            diff = mpi_helper.allreduce(diff, op=getattr(mpi_helper.mpi, "MAX", None))
+            refinement = {
+                "n_poles": int(shifts_ref.size),
+                "scalar_error": float(delta_ref),
+                "max_abs_diff": float(diff[0]),
+            }
+
+        # Power-iteration estimate, reported only to show how loose the
+        # rigorous upper bound is
+        lambda_max_estimate = self._estimate_mtilde_lambda_max(d, Lia)
+
+        diagnostics = {
+            "method": "hht",
+            "interval": (float(lmin), float(lmax)),
+            "condition_number": float(lmax / lmin),
+            "coupling_bound": {
+                "frobenius_sq": w_frob_sq,
+                "one_norm_times_inf_norm": w_one * w_inf,
+                "used": coupling_bound,
+            },
+            "lambda_max_estimate": lambda_max_estimate,
+            "upper_bound_looseness": float(lmax / lambda_max_estimate)
+            if lambda_max_estimate > 0
+            else np.inf,
+            "n_poles": int(shifts.size),
+            "n_poles_estimate": int(n_estimate),
+            "n_poles_fixed": n_poles_fixed is not None,
+            "npoints_legacy": int(self.gw.npoints),
+            "scalar_error": float(delta),
+            "tol": float(tol),
+            "cholesky_residuals": {
+                "max": float(np.max(residuals)),
+                "per_pole": [float(r) for r in residuals],
+            },
+            "refinement": refinement,
+            "intermediate_shapes": [
+                ("d_local", d.shape),
+                ("Lia_local", Lia.shape),
+                ("weighted_rhs", Lia.shape),
+                ("gram", (naux, naux)),
+                ("cholesky_lhs", (naux, naux)),
+                ("solve", Lia.shape),
+                ("integral", integral.shape),
+            ],
+        }
+        self.gw.eta0_diagnostics = diagnostics
+        eta0.report(diagnostics)
+
+        return integral
 
     @logging.with_timer("Nth density-density moments")
     @logging.with_status("Constructing nth density-density moment")
