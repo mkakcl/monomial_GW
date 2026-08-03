@@ -64,7 +64,11 @@ class Base:
         if key == "thc_opts":
             return self.polarizability.lower().startswith("thc")
         if key == "npoints":
+            return self.polarizability.lower().endswith("drpa") and self.eta0_method == "clencur"
+        if key == "eta0_method":
             return self.polarizability.lower().endswith("drpa")
+        if key in ("eta0_tol", "eta0_n_poles", "eta0_check_refinement"):
+            return self.polarizability.lower().endswith("drpa") and self.eta0_method == "hht"
         if key == "eta":
             return self.srg == 0.0
         if key == "srg":
@@ -341,7 +345,32 @@ class BaseGW(Base):
         Type of polarizability to use, can be one of `("drpa",
         "drpa-exact", "dtda", "thc-dtda"). Default value is `"drpa"`.
     npoints : int, optional
-        Number of numerical integration points. Default value is `48`.
+        Number of numerical integration points. Only used by the legacy
+        Clenshaw-Curtis quadrature (`eta0_method="clencur"`). Default
+        value is `48`.
+    eta0_method : str, optional
+        Method for the zeroth moment of the dRPA density-density
+        response, one of `("clencur", "hht")`. `"clencur"` is the
+        legacy Clenshaw-Curtis quadrature; `"hht"` is a certified
+        rational approximation of the inverse square root (see
+        `momentGW.eta0`), currently validated for restricted molecular
+        calculations only. Default value is `"clencur"`.
+    eta0_tol : float, optional
+        Requested scalar relative error of the rational approximation
+        over the certified spectral interval, for
+        `eta0_method="hht"`. The pole count is selected against the
+        measured error. Below a requested error of about `1e-13` the
+        float64 kernel arithmetic floor takes over, so tightening past
+        the default buys nothing. Default value is `1e-14`.
+    eta0_n_poles : int, optional
+        Fixed pole count for `eta0_method="hht"`, overriding selection
+        against `eta0_tol`. The measured scalar error is still reported,
+        and a tolerance miss warns rather than raises. Default value is
+        `None`.
+    eta0_check_refinement : bool, optional
+        If `True`, repeat the `"hht"` zeroth moment with four more poles
+        and record the difference as a secondary regression signal. Not
+        an accuracy certificate. Default value is `False`.
     optimise_chempot : bool, optional
         If `True`, optimise the chemical potential by shifting the
         position of the poles in the self-energy relative to those in
@@ -376,6 +405,10 @@ class BaseGW(Base):
         diagonal_se=False,
         polarizability="drpa",
         npoints=48,
+        eta0_method="clencur",
+        eta0_tol=1e-14,
+        eta0_n_poles=None,
+        eta0_check_refinement=False,
         optimise_chempot=False,
         fock_loop=False,
         fock_opts=OrderedDict(
@@ -401,6 +434,22 @@ class BaseGW(Base):
     def __init__(self, mf, **kwargs):
         super().__init__(mf, **kwargs)
 
+        if self.eta0_method not in ("clencur", "hht"):
+            raise ValueError(
+                f"Unknown eta0_method {self.eta0_method!r}: expected one of ('clencur', 'hht')"
+            )
+
+        # The HHT eta0 route is validated for the restricted molecular path
+        # only (ROADMAP Milestones 2 and 6).  The unrestricted and periodic
+        # solvers override the zeroth-moment build wholesale, so the option
+        # would be silently inert there; fail at construction instead.
+        module = type(self).__module__
+        if self.eta0_method != "clencur" and (".uhf" in module or ".pbc" in module):
+            raise NotImplementedError(
+                f"eta0_method={self.eta0_method!r} is restricted molecular only; "
+                f"{type(self).__name__} keeps the legacy quadrature"
+            )
+
         # Attributes
         self.converged = None
         self.se = None
@@ -408,6 +457,7 @@ class BaseGW(Base):
         self._qp_energy = None
         self.dyson_diagnostics = None
         self.dyson_solvers = None
+        self.eta0_diagnostics = None
 
     #: Whether the solver iterates towards self-consistency. A solver that does not has no
     #: outer loop that can fail, so its quasiparticle energies are its answer whatever the
