@@ -74,9 +74,9 @@
   "se_n_poles": 84
  },
  "load_average": [
-  2.14,
-  2.44,
-  3.09
+  1.98,
+  2.47,
+  2.82
  ],
  "mean_field": {
   "auxbasis": "weigend",
@@ -89,7 +89,7 @@
   "nelectron": 24,
   "nmo": 42,
   "nocc": 12,
-  "scf_wall_seconds": 1.479,
+  "scf_wall_seconds": 1.493,
   "xc": "pbe"
  },
  "moment_error": {
@@ -101,13 +101,22 @@
   "compression": "ia",
   "compression_tol": 1e-10,
   "diagonal_se": false,
+  "dyson_opts": {
+   "atol": 1e-10,
+   "calculate_errors": true,
+   "force_orthogonality": true,
+   "hermitian": true,
+   "neg_atol": 1e-10,
+   "neg_rtol": 1e-08,
+   "rtol": 1e-12
+  },
   "fock_loop": false,
   "nmom_max": 1,
   "npoints": 48,
   "optimise_chempot": false,
   "polarizability": "drpa"
  },
- "peak_memory_gb": 0.2129,
+ "peak_memory_gb": 0.2124,
  "provenance": {
   "blas": {
    "blas": {
@@ -124,7 +133,7 @@
   "code": {
    "baseline_script": {
     "branch": "m1.4-dyson-options",
-    "commit": "d3c7e8b5a804f3aa22cf5bd7343877e422949998",
+    "commit": "490eeee8741712f34211c08837f8ce36849bd1ae",
     "dirty": true,
     "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m1.4-dyson-options/baseline"
    },
@@ -140,7 +149,7 @@
    },
    "momentGW": {
     "branch": "m1.4-dyson-options",
-    "commit": "d3c7e8b5a804f3aa22cf5bd7343877e422949998",
+    "commit": "490eeee8741712f34211c08837f8ce36849bd1ae",
     "dirty": true,
     "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m1.4-dyson-options/momentGW/__init__.py",
     "version": "1.0.0"
@@ -157,7 +166,7 @@
     "OPENBLAS_NUM_THREADS": null
    }
   },
-  "recorded_utc": "2026-08-04T00:46:06Z",
+  "recorded_utc": "2026-08-04T00:57:00Z",
   "versions": {
    "numpy": "2.3.5",
    "pyscf": "2.14.0",
@@ -756,14 +765,14 @@
  },
  "timings_seconds": {
   "dd_moments": 0.0003,
-  "dyson": 0.167,
-  "eta0": 0.1088,
-  "eta0_oracle": 0.0277,
-  "integrals": 0.0393,
-  "realization_diagnostics": 0.0015,
-  "se_moments_from_dd": 0.0451,
-  "se_moments_streaming": 0.1147,
-  "se_static": 0.1365,
-  "total": 0.6458
+  "dyson": 0.2016,
+  "eta0": 0.1019,
+  "eta0_oracle": 0.0249,
+  "integrals": 0.0375,
+  "realization_diagnostics": 0.002,
+  "se_moments_from_dd": 0.0441,
+  "se_moments_streaming": 0.1368,
+  "se_static": 0.1419,
+  "total": 0.6981
  }
 }

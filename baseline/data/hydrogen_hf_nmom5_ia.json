@@ -52,7 +52,7 @@
    "mtilde_condition": 24.634251435211635,
    "mtilde_max_eigenvalue": 18.654081985988267,
    "mtilde_min_eigenvalue": 0.7572416817717688,
-   "relative_error": 8.804730866935996e-16
+   "relative_error": 8.804730866935995e-16
   },
   "quarter_grid_difference": 0.0008202488476644631,
   "rank_1e-10": 9,
@@ -86,9 +86,9 @@
   "se_n_poles": 60
  },
  "load_average": [
-  2.1,
-  2.45,
-  3.1
+  1.98,
+  2.49,
+  2.83
  ],
  "mean_field": {
   "auxbasis": "weigend",
@@ -101,7 +101,7 @@
   "nelectron": 2,
   "nmo": 10,
   "nocc": 1,
-  "scf_wall_seconds": 0.08,
+  "scf_wall_seconds": 0.076,
   "xc": "hf"
  },
  "moment_error": {
@@ -113,13 +113,22 @@
   "compression": "ia",
   "compression_tol": 1e-10,
   "diagonal_se": false,
+  "dyson_opts": {
+   "atol": 1e-10,
+   "calculate_errors": true,
+   "force_orthogonality": true,
+   "hermitian": true,
+   "neg_atol": 1e-10,
+   "neg_rtol": 1e-08,
+   "rtol": 1e-12
+  },
   "fock_loop": false,
   "nmom_max": 5,
   "npoints": 48,
   "optimise_chempot": false,
   "polarizability": "drpa"
  },
- "peak_memory_gb": 0.1001,
+ "peak_memory_gb": 0.1005,
  "provenance": {
   "blas": {
    "blas": {
@@ -136,7 +145,7 @@
   "code": {
    "baseline_script": {
     "branch": "m1.4-dyson-options",
-    "commit": "d3c7e8b5a804f3aa22cf5bd7343877e422949998",
+    "commit": "490eeee8741712f34211c08837f8ce36849bd1ae",
     "dirty": true,
     "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m1.4-dyson-options/baseline"
    },
@@ -152,7 +161,7 @@
    },
    "momentGW": {
     "branch": "m1.4-dyson-options",
-    "commit": "d3c7e8b5a804f3aa22cf5bd7343877e422949998",
+    "commit": "490eeee8741712f34211c08837f8ce36849bd1ae",
     "dirty": true,
     "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m1.4-dyson-options/momentGW/__init__.py",
     "version": "1.0.0"
@@ -169,7 +178,7 @@
     "OPENBLAS_NUM_THREADS": null
    }
   },
-  "recorded_utc": "2026-08-04T00:46:06Z",
+  "recorded_utc": "2026-08-04T00:57:00Z",
   "versions": {
    "numpy": "2.3.5",
    "pyscf": "2.14.0",
@@ -198,7 +207,7 @@
      1.158089002683723e-14,
      5.1965975803558006e-14,
      2.531683162735843e-13,
-     1.319803404557995e-12
+     1.3198034045579952e-12
     ],
     "absolute_max": [
      2.974412287148537e-16,
@@ -209,7 +218,7 @@
      5.755396159656812e-13
     ],
     "chempot": 0.0,
-    "max_relative_frobenius": 3.3357025183365715e-14,
+    "max_relative_frobenius": 3.335702518336572e-14,
     "orders": [
      0,
      1,
@@ -224,7 +233,7 @@
      1.7598130933412798e-14,
      2.3238477426277935e-14,
      2.837629380722642e-14,
-     3.3357025183365715e-14
+     3.335702518336572e-14
     ],
     "relative_max": [
      6.214770213371082e-15,
@@ -568,14 +577,14 @@
  },
  "timings_seconds": {
   "dd_moments": 0.0001,
-  "dyson": 0.0417,
-  "eta0": 0.0127,
+  "dyson": 0.0519,
+  "eta0": 0.0141,
   "eta0_oracle": 0.0001,
-  "integrals": 0.0006,
-  "realization_diagnostics": 0.0011,
-  "se_moments_from_dd": 0.0178,
-  "se_moments_streaming": 0.0278,
+  "integrals": 0.0007,
+  "realization_diagnostics": 0.0015,
+  "se_moments_from_dd": 0.0207,
+  "se_moments_streaming": 0.0344,
   "se_static": 0.0002,
-  "total": 0.1037
+  "total": 0.126
  }
 }
