@@ -386,7 +386,13 @@ class BaseGW(Base):
         Dictionary of numerical options passed to the Dyson moment block
         Lanczos solver. Stated explicitly rather than inherited from
         Dyson, so that a change of pin cannot silently change the
-        numerics here. For more details see `dyson.MBLSE`.
+        numerics here. `atol` and `rtol` set the effective support
+        cutoff `atol + rtol * lambda_max` of every matrix power taken
+        inside the recurrence; `neg_atol` and `neg_rtol` set how negative
+        an eigenvalue may be before it is treated as a material loss of
+        positive semi-definiteness rather than as roundoff. The values
+        below are the Dyson defaults, written down rather than inherited.
+        For more details see `dyson.MBLSE`.
     compression : str, optional
         Blocks of the ERIs to use as a metric for compression. Can be
         one or more of `("oo", "ov", "vv", "ia")` which can be passed as
@@ -423,6 +429,10 @@ class BaseGW(Base):
             hermitian=True,
             force_orthogonality=True,
             calculate_errors=True,
+            atol=1e-10,
+            rtol=1e-12,
+            neg_atol=1e-10,
+            neg_rtol=1e-8,
         ),
         compression="ia",
         compression_tol=1e-10,

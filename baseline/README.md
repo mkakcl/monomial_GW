@@ -219,11 +219,13 @@ stepping down fails the check rather than hiding inside a residual that got smal
 the same momentGW commit previously resolved to whatever Dyson's default branch happened to
 be that day, so no recorded result could name the code that produced it.
 
-The pin is currently `mkakcl/dyson@054d4b5`, which carries the Milestone 1 realization work
-that upstream master does not have: the corrected moment-error diagnostic (`mkakcl/dyson#1`),
-the scale-aware `matrix_power` support policy (`#2`), and the feasibility validation and
-order step-down (`#3`) described above. Before `#1` the error comparison silently dropped the
-two newest moments and returned exactly zero at the first iteration.
+The pin is currently `mkakcl/dyson@73cd18d`, which carries the Milestone 1 work that
+upstream master does not have: the corrected moment-error diagnostic (`mkakcl/dyson#1`),
+the scale-aware `matrix_power` support policy (`#2`), the feasibility validation and order
+step-down (`#3`) described above, and the tolerance option surface (`#4`) that lets
+`dyson_opts` state that support policy instead of inheriting it. Before `#1` the error
+comparison silently dropped the two newest moments and returned exactly zero at the first
+iteration.
 
 Pinning by URL created a second problem, which `run.py` now handles: a dependency installed
 from `git+...@<sha>` unpacks into `site-packages` with no `.git` beside it, so the commit
@@ -231,5 +233,33 @@ cannot be read back out of a repository. It is recovered from pip's `direct_url.
 instead. Without that, honouring the pin is exactly the case in which a record cannot name
 the Dyson revision that produced it.
 
-This is still the fork. Move the pin to a `BoothGroup/dyson` commit once the Milestone 1 work
-is upstreamed and accepted, and re-record.
+The fork is the accepted state, not a staging area for an upstream merge, so this is the
+terminal pin rather than a placeholder. Move it only deliberately, and re-record in the
+same commit.
+
+### What the move to `73cd18d` changed
+
+Nothing physical. `baseline.check` reported 52/52 unchanged against the `054d4b5` records
+before they were rewritten, with every frontier QP energy bit-identical (`HOMO shift
++0.000e+00 eV` in all 52 cases) and every eta0 array identical to the last bit. That is the
+expected result: `#4` only lets the tolerances be *stated*, and the values stated are the
+ones the library was already using.
+
+Two differences between the old and new record files are worth knowing about, because
+neither is a change in the numbers:
+
+- Five `nmom_7` cases flip `converged_flag` from `True` to `False`
+  (`hydrogen-631g_hf`, and `lithium-hydride` `hf`/`pbe` with and without compression). All
+  five have `order_reduced = True` in one sector. The old records were written on
+  2026-07-31 at 00:19Z, before the Milestone 1.4 convergence gate merged at 03:13Z, so they
+  carry the old unconditional `True`. `converged_flag_note` in each record predicts exactly
+  this.
+- Residual diagnostics, the chemical potential (by up to 4e-7 relative) and two deep-state
+  entries of `qp_energy_by_overlap_ha` differ between the two runs. These are quantities
+  that move run to run on this machine: residuals sit at roundoff, the chemical potential
+  is fitted to a tolerance, and largest-overlap labelling of deep states is not stable
+  under a last-bit perturbation. Milestone 3.4 addresses the last of these directly.
+  `baseline.check` tolerates all three. That this is run-to-run variation and not the pin
+  is measurable rather than assumed: re-running the check against these records, with the
+  identical code that wrote them, reproduces 52/52 while still reporting HOMO shifts of up
+  to 2.4e-14 eV and realization residuals that move by tens of percent.

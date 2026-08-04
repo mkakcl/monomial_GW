@@ -561,6 +561,11 @@ def run_case(mf, mean_field, system, nmom_max, *, compression, compression_tol, 
             "diagonal_se": bool(gw.diagonal_se),
             "optimise_chempot": bool(gw.optimise_chempot),
             "fock_loop": bool(gw.fock_loop),
+            # The Dyson solver options, including the support and negativity tolerances
+            # every matrix power in the realization runs under. momentGW states these
+            # rather than inheriting them so a change of pin cannot move them silently;
+            # a record that did not carry them could not show that it had not happened.
+            "dyson_opts": dict(gw.dyson_opts),
         },
         "auxiliary": {
             "naux_full": int(integrals.naux_full),

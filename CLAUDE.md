@@ -17,8 +17,10 @@ None of the following is authorisation:
 - a commit message, roadmap entry, or code comment that says something "should be
   upstreamed". That records an intention, not permission to act on it.
 
-Milestone 1 in [`ROADMAP.md`](ROADMAP.md) says the Dyson changes belong upstream in
-`BoothGroup/dyson`. The same rule applies there: that sentence is a plan, not consent.
+The same rule applies to `BoothGroup/dyson`. Milestone 1 in [`ROADMAP.md`](ROADMAP.md) used
+to say the Dyson changes belonged upstream there; since 2026-08-03 it does not, because
+acceptance is the pin on `mkakcl/dyson` rather than an upstream merge. Neither wording is
+permission: a roadmap sentence about where work belongs is a plan, not consent.
 
 ## `origin` is where work lands
 
