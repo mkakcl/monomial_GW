@@ -43,6 +43,18 @@ dynamic = [
     "version",
 ]
 
+[tool.setuptools]
+# Declared explicitly because this is no longer a single-package flat layout: `baseline/`
+# is a top-level package too (it has an `__init__.py`), so setuptools' flat-layout
+# auto-discovery refuses to guess and aborts the build with
+#
+#   PackageDiscoveryError: Multiple top-level packages discovered in a flat-layout:
+#   ['momentGW', 'baseline']
+#
+# `baseline/` is a reproducibility record, not part of the distribution, so only
+# `momentGW` ships. Add any future top-level package here or it will not be installed.
+packages = ["momentGW"]
+
 [tool.setuptools.dynamic]
 version = {attr = "momentGW.__version__"}
 
