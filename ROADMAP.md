@@ -427,8 +427,15 @@ this roadmap:
   MPI reduction and symmetrization instead of reducing full stacks repeatedly.
 - [ ] Batch several HHT Gram reductions or overlap nonblocking reductions with local
   work, subject to memory profiling.
-- [ ] Add a native no-compression integral-transform path instead of multiplying each
-  block by a dense identity rotation.
+- [x] Add a native no-compression integral-transform path instead of multiplying each
+  block by a dense identity rotation. 762 ms to 220 ms on benzene/cc-pVDZ, bit-identical
+  output. The identity was not merely a redundant multiply: `rot[b0:b1].T @ block`
+  scatters each block up to the full auxiliary height, so an uncompressed run contracted
+  every block against an `(naux_full, naux_full)` identity and accumulated the result over
+  the whole array. Removing it means each block has to land in the rows it belongs to
+  instead, which is the native path this item asked for. Applies to the restricted
+  molecular `Integrals` only; the unrestricted, periodic and THC classes override
+  `transform` and are untouched.
 - [ ] Replace absolute auxiliary compression selection with a scale-aware PSD
   criterion. Report rank, discarded norm, and observed eta0/QP impact.
 - [ ] Investigate pivoted Cholesky or randomized compression for large auxiliary
