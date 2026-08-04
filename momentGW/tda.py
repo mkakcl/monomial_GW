@@ -290,15 +290,6 @@ class dTDA(BaseSE):
             Moments of the virtual self-energy.
         """
 
-        # Setup dependent on diagonal SE
-        q0, q1 = self.mpi_slice(self.mo_energy_g.size)
-        if self.gw.diagonal_se:
-            eta = np.zeros((q1 - q0, self.nmo))
-            pq = p = q = "p"
-        else:
-            eta = np.zeros((q1 - q0, self.nmo, self.nmo))
-            pq, p, q = "pq", "p", "q"
-
         if self.d is None:
             self._build_d()
 
@@ -310,6 +301,17 @@ class dTDA(BaseSE):
         moments_occ = np.zeros((self.nmom_max + 1, self.nmo, self.nmo))
         moments_vir = np.zeros((self.nmom_max + 1, self.nmo, self.nmo))
 
+        # Reorder the integrals so that the external index leads. Each order below needs
+        # `Lp.T @ eta_aux @ Lp` for every external orbital, which is a batched pair of
+        # GEMMs; with the external index last, neither operand of the batch is contiguous
+        # and the batch runs at less than half the achievable rate. The copy costs a second
+        # `Lpx` for the duration of this routine (naux * nmo * nx doubles: 0.06 GB for
+        # benzene/cc-pVDZ, 0.36 GB for cc-pVTZ), and is made once and reused by every order.
+        # Emitting this layout from `Integrals.transform` would remove the copy, but `Lpx`
+        # is shared with the unrestricted and periodic solvers, which are out of scope until
+        # Milestone 6.
+        Lxp = np.ascontiguousarray(self.integrals.Lpx.transpose(2, 0, 1))  # (G, aux, MO)
+
         # Get the moments in (aux|aux) and rotate to (mo|mo)
         for n in range(self.nmom_max + 1):
             if moments_dd is None:
@@ -317,9 +319,11 @@ class dTDA(BaseSE):
             else:
                 eta_aux = np.dot(moments_dd[n], self.integrals.Lia.T)  # aux^2 o v
             eta_aux = mpi_helper.allreduce(eta_aux)
-            for x in range(q1 - q0):
-                Lp = self.integrals.Lpx[:, :, x]
-                eta[x] = util.einsum(f"P{p},Q{q},PQ->{pq}", Lp, Lp, eta_aux) * 2.0
+            rotated = np.matmul(eta_aux, Lxp)  # (G, aux, MO)
+            if self.gw.diagonal_se:
+                eta = np.sum(Lxp * rotated, axis=1) * 2.0  # (G, MO)
+            else:
+                eta = np.matmul(Lxp.transpose(0, 2, 1), rotated) * 2.0  # (G, MO, MO)
 
             # Construct the self-energy moments for this order only to
             # save memory
