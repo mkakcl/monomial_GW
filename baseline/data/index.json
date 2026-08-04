@@ -226,10 +226,10 @@
   },
   "code": {
    "baseline_script": {
-    "branch": "m1.4-dyson-options",
-    "commit": "490eeee8741712f34211c08837f8ce36849bd1ae",
+    "branch": "m4-tda-rpa",
+    "commit": "59a71f2a45e0e253bace953b95efe8a6b1271c5b",
     "dirty": true,
-    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m1.4-dyson-options/baseline"
+    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m4-tda-rpa/baseline"
    },
    "dyson": {
     "branch": null,
@@ -242,10 +242,10 @@
     "version": "1.0.0"
    },
    "momentGW": {
-    "branch": "m1.4-dyson-options",
-    "commit": "490eeee8741712f34211c08837f8ce36849bd1ae",
+    "branch": "m4-tda-rpa",
+    "commit": "59a71f2a45e0e253bace953b95efe8a6b1271c5b",
     "dirty": true,
-    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m1.4-dyson-options/momentGW/__init__.py",
+    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m4-tda-rpa/momentGW/__init__.py",
     "version": "1.0.0"
    }
   },
@@ -260,7 +260,7 @@
     "OPENBLAS_NUM_THREADS": null
    }
   },
-  "recorded_utc": "2026-08-04T00:57:00Z",
+  "recorded_utc": "2026-08-04T01:56:17Z",
   "versions": {
    "numpy": "2.3.5",
    "pyscf": "2.14.0",

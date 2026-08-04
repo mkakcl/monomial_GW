@@ -350,11 +350,14 @@ class BaseGW(Base):
         value is `48`.
     eta0_method : str, optional
         Method for the zeroth moment of the dRPA density-density
-        response, one of `("clencur", "hht")`. `"clencur"` is the
-        legacy Clenshaw-Curtis quadrature; `"hht"` is a certified
+        response, one of `("clencur", "hht")`. `"hht"` is a certified
         rational approximation of the inverse square root (see
-        `momentGW.eta0`), currently validated for restricted molecular
-        calculations only. Default value is `"clencur"`.
+        `momentGW.eta0`), which reports the interval it is accurate over
+        and the error it achieved; `"clencur"` is the legacy
+        Clenshaw-Curtis quadrature, retained as an independent reference.
+        Validated for restricted molecular calculations only: the
+        unrestricted and periodic solvers keep `"clencur"` and reject an
+        explicit `"hht"`. Default value is `"hht"`.
     eta0_tol : float, optional
         Requested scalar relative error of the rational approximation
         over the certified spectral interval, for
@@ -411,7 +414,7 @@ class BaseGW(Base):
         diagonal_se=False,
         polarizability="drpa",
         npoints=48,
-        eta0_method="clencur",
+        eta0_method="hht",
         eta0_tol=1e-14,
         eta0_n_poles=None,
         eta0_check_refinement=False,
@@ -452,13 +455,17 @@ class BaseGW(Base):
         # The HHT eta0 route is validated for the restricted molecular path
         # only (ROADMAP Milestones 2 and 6).  The unrestricted and periodic
         # solvers override the zeroth-moment build wholesale, so the option
-        # would be silently inert there; fail at construction instead.
+        # would be silently inert there.  Asking for it explicitly is an error;
+        # inheriting the restricted molecular default is not, and those solvers
+        # fall back to the legacy quadrature and say so in their options header.
         module = type(self).__module__
-        if self.eta0_method != "clencur" and (".uhf" in module or ".pbc" in module):
-            raise NotImplementedError(
-                f"eta0_method={self.eta0_method!r} is restricted molecular only; "
-                f"{type(self).__name__} keeps the legacy quadrature"
-            )
+        if ".uhf" in module or ".pbc" in module:
+            if "eta0_method" in kwargs and self.eta0_method != "clencur":
+                raise NotImplementedError(
+                    f"eta0_method={self.eta0_method!r} is restricted molecular only; "
+                    f"{type(self).__name__} keeps the legacy quadrature"
+                )
+            self._opts["eta0_method"] = "clencur"
 
         # Attributes
         self.converged = None

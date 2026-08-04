@@ -177,10 +177,11 @@ class GW(BaseGW):
         value is `48`.
     eta0_method : str, optional
         Method for the zeroth moment of the dRPA density-density
-        response, one of `("clencur", "hht")`. `"clencur"` is the
-        legacy Clenshaw-Curtis quadrature; `"hht"` is a certified
+        response, one of `("clencur", "hht")`. `"hht"` is a certified
         rational approximation of the inverse square root (see
-        `momentGW.eta0`). Default value is `"clencur"`.
+        `momentGW.eta0`); `"clencur"` is the legacy Clenshaw-Curtis
+        quadrature, retained as an independent reference. Default value
+        is `"hht"`.
     eta0_tol : float, optional
         Requested scalar relative error of the rational approximation
         over the certified spectral interval, for
