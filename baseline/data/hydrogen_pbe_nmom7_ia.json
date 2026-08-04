@@ -83,18 +83,18 @@
   ]
  },
  "green_function": {
-  "chempot": -0.28895314336133504,
+  "chempot": -0.2889531493663886,
   "converged_flag": true,
-  "converged_flag_note": "momentGW returns True unconditionally for one-shot GW; it is not a numerical convergence result. Milestone 1.4 replaces it.",
+  "converged_flag_note": "Since Milestone 1.4 this is a numerical convergence result: the realization delivered every moment order it was asked for, and the particle-number error is within tolerance. Records made before 1.4 carry an unconditional True, so a case that steps down reads True there and False here.",
   "n_poles": 90,
-  "nelectron": 2.0006904539324872,
-  "particle_number_error": 0.0006904539324872339,
+  "nelectron": 2.0006904539324863,
+  "particle_number_error": 0.0006904539324863457,
   "se_n_poles": 80
  },
  "load_average": [
-  4.64,
-  3.15,
-  2.62
+  2.1,
+  2.45,
+  3.1
  ],
  "mean_field": {
   "auxbasis": "weigend",
@@ -107,13 +107,13 @@
   "nelectron": 2,
   "nmo": 10,
   "nocc": 1,
-  "scf_wall_seconds": 0.158,
+  "scf_wall_seconds": 0.135,
   "xc": "pbe"
  },
  "moment_error": {
   "definition": "momentGW scaled error between input and realized self-energy moments",
-  "hole": 3.097522238704187e-14,
-  "particle": 5.467848396278896e-14
+  "hole": 4.929390229335695e-14,
+  "particle": 4.2743586448068527e-14
  },
  "options": {
   "compression": "ia",
@@ -125,7 +125,7 @@
   "optimise_chempot": false,
   "polarizability": "drpa"
  },
- "peak_memory_gb": 0.112,
+ "peak_memory_gb": 0.1095,
  "provenance": {
   "blas": {
    "blas": {
@@ -141,26 +141,26 @@
   },
   "code": {
    "baseline_script": {
-    "branch": "worktree-dyson-pin-m1",
-    "commit": "c03432491ade02f36e40367a5ac7e5f8e808c129",
+    "branch": "m1.4-dyson-options",
+    "commit": "d3c7e8b5a804f3aa22cf5bd7343877e422949998",
     "dirty": true,
-    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/dyson-pin-m1/baseline"
+    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m1.4-dyson-options/baseline"
    },
    "dyson": {
     "branch": null,
-    "commit": "054d4b5f9464946a2d972f4bf3e1d058529b596a",
+    "commit": "73cd18d6f0426f238f8df3fd96807f41ea5daa53",
     "dirty": false,
     "path": "/Users/marcusallen/miniconda3/envs/mgw-monomial/lib/python3.11/site-packages/dyson/__init__.py",
-    "requested_revision": "054d4b5f9464946a2d972f4bf3e1d058529b596a",
+    "requested_revision": "73cd18d6f0426f238f8df3fd96807f41ea5daa53",
     "source": "pip direct_url",
     "url": "https://github.com/mkakcl/dyson",
     "version": "1.0.0"
    },
    "momentGW": {
-    "branch": "worktree-dyson-pin-m1",
-    "commit": "c03432491ade02f36e40367a5ac7e5f8e808c129",
+    "branch": "m1.4-dyson-options",
+    "commit": "d3c7e8b5a804f3aa22cf5bd7343877e422949998",
     "dirty": true,
-    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/dyson-pin-m1/momentGW/__init__.py",
+    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m1.4-dyson-options/momentGW/__init__.py",
     "version": "1.0.0"
    }
   },
@@ -175,7 +175,7 @@
     "OPENBLAS_NUM_THREADS": null
    }
   },
-  "recorded_utc": "2026-07-31T00:19:02Z",
+  "recorded_utc": "2026-08-04T00:46:06Z",
   "versions": {
    "numpy": "2.3.5",
    "pyscf": "2.14.0",
@@ -184,16 +184,16 @@
   }
  },
  "qp_energy_by_overlap_ha": [
-  -0.5779060256464374,
-  0.1863503828853789,
-  0.4546195312075846,
-  0.779150942417055,
-  1.2287429735941224,
+  -0.5779060256464377,
+  0.1863503828853797,
+  0.45461953120758236,
+  0.7791509424170536,
   1.22874297359412,
-  1.8404398172729928,
-  1.9727269453662164,
-  1.972726945365508,
-  3.553496193121811
+  1.2287429735941204,
+  1.8404398172729939,
+  1.9727269453662137,
+  1.9727269453655094,
+  3.5534961931218043
  ],
  "realization": {
   "hole": {
@@ -392,30 +392,30 @@
   }
  },
  "results": {
-  "ea_ev": -5.070852245781796,
+  "ea_ev": -5.070852245781818,
   "frontier": {
-   "chemical_potential_ha": -0.2889530128232182,
+   "chemical_potential_ha": -0.28895301282321817,
    "definition": "physical correlated-spectrum multiplets split at the Aufbau chemical potential; independent of the reference MO ordering, so it stays correct through a crossing",
    "degeneracy_atol_ha": 1e-06,
-   "electron_count_error": -0.0006904539324867898,
-   "gap_ha": 0.7642564085318163,
+   "electron_count_error": -0.0006904539324863457,
+   "gap_ha": 0.7642564085318173,
    "homo": {
     "dominant_mo_index": 0,
-    "dominant_mo_weight": 0.8942633202857742,
-    "energy_ev": -15.725624077749055,
-    "energy_ha": -0.5779060256464374,
+    "dominant_mo_weight": 0.8942633202857755,
+    "energy_ev": -15.725624077749062,
+    "energy_ha": -0.5779060256464377,
     "multiplicity": 1,
-    "weight": 0.8945184222335116,
-    "weight_per_state": 0.8945184222335116
+    "weight": 0.894518422233513,
+    "weight_per_state": 0.894518422233513
    },
    "lumo": {
     "dominant_mo_index": 1,
-    "dominant_mo_weight": 0.9739416675812387,
-    "energy_ev": 5.070852245781796,
-    "energy_ha": 0.1863503828853789,
+    "dominant_mo_weight": 0.9739416675812356,
+    "energy_ev": 5.070852245781818,
+    "energy_ha": 0.1863503828853797,
     "multiplicity": 1,
-    "weight": 0.9810616625718757,
-    "weight_per_state": 0.9810616625718757
+    "weight": 0.9810616625718727,
+    "weight_per_state": 0.9810616625718727
    },
    "n_multiplets": 48,
    "n_poles": 90,
@@ -427,13 +427,13 @@
     0.3,
     0.5
    ],
-   "total_weight": 10.000000000000004
+   "total_weight": 10.000000000000002
   },
-  "gap_ev": 20.79647632353085,
-  "homo_ha": -0.5779060256464374,
+  "gap_ev": 20.79647632353088,
+  "homo_ha": -0.5779060256464377,
   "homo_index": 0,
-  "ip_ev": 15.725624077749055,
-  "lumo_ha": 0.1863503828853789,
+  "ip_ev": 15.725624077749062,
+  "lumo_ha": 0.1863503828853797,
   "orbital_table": {
    "mo_index": [
     0,
@@ -472,28 +472,28 @@
     0.0
    ],
    "qp_energy_ha": [
-    -0.5779060256464374,
-    0.1863503828853789,
-    0.4546195312075846,
-    0.779150942417055,
-    1.2287429735941213,
-    1.2287429735941213,
-    1.8404398172729928,
-    1.9727269453658622,
-    1.9727269453658622,
-    3.553496193121811
+    -0.5779060256464377,
+    0.1863503828853797,
+    0.45461953120758236,
+    0.7791509424170536,
+    1.2287429735941202,
+    1.2287429735941202,
+    1.8404398172729939,
+    1.9727269453658616,
+    1.9727269453658616,
+    3.5534961931218043
    ],
    "qp_weight": [
-    0.8942633202857742,
-    0.9739416675812387,
-    0.9293615454705586,
-    0.4329025379935099,
-    0.9052784364290889,
-    0.9052784364290599,
-    0.5954324822039541,
-    0.7316110767853709,
-    0.7316110767846059,
-    0.7695197560755125
+    0.8942633202857755,
+    0.9739416675812356,
+    0.929361545470552,
+    0.4329025379934997,
+    0.9052784364290878,
+    0.9052784364290596,
+    0.5954324822039534,
+    0.7316110767853702,
+    0.7316110767846101,
+    0.7695197560755171
    ],
    "reference_energy_ha": [
     -0.37656704752583153,
@@ -511,28 +511,28 @@
    "reference_lumo_index": 1
   },
   "qp_energies_ha": [
-   -0.5779060256464374,
-   0.1863503828853789,
-   0.4546195312075846,
-   0.779150942417055,
-   1.2287429735941213,
-   1.2287429735941213,
-   1.8404398172729928,
-   1.9727269453658622,
-   1.9727269453658622,
-   3.553496193121811
+   -0.5779060256464377,
+   0.1863503828853797,
+   0.45461953120758236,
+   0.7791509424170536,
+   1.2287429735941202,
+   1.2287429735941202,
+   1.8404398172729939,
+   1.9727269453658616,
+   1.9727269453658616,
+   3.5534961931218043
   ],
   "qp_weights": [
-   0.8942633202857742,
-   0.9739416675812387,
-   0.9293615454705586,
-   0.4329025379935099,
-   0.9052784364290889,
-   0.9052784364290599,
-   0.5954324822039541,
-   0.7316110767853709,
-   0.7316110767846059,
-   0.7695197560755125
+   0.8942633202857755,
+   0.9739416675812356,
+   0.929361545470552,
+   0.4329025379934997,
+   0.9052784364290878,
+   0.9052784364290596,
+   0.5954324822039534,
+   0.7316110767853702,
+   0.7316110767846101,
+   0.7695197560755171
   ]
  },
  "schema_version": "1.1",
@@ -617,15 +617,15 @@
   "source": "GW100 (HCP92 experimental structure) via molecular-mGW-testing gw100 set"
  },
  "timings_seconds": {
-  "dd_moments": 0.0002,
-  "dyson": 0.0788,
-  "eta0": 0.0159,
-  "eta0_oracle": 0.0002,
-  "integrals": 0.0008,
-  "realization_diagnostics": 0.0573,
-  "se_moments_from_dd": 0.0369,
-  "se_moments_streaming": 0.0598,
-  "se_static": 0.0127,
-  "total": 0.2652
+  "dd_moments": 0.0001,
+  "dyson": 0.0618,
+  "eta0": 0.0121,
+  "eta0_oracle": 0.0001,
+  "integrals": 0.0006,
+  "realization_diagnostics": 0.0014,
+  "se_moments_from_dd": 0.0263,
+  "se_moments_streaming": 0.0393,
+  "se_static": 0.0096,
+  "total": 0.1538
  }
 }

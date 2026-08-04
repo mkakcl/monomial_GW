@@ -79,16 +79,16 @@
  "green_function": {
   "chempot": -0.13752893007696487,
   "converged_flag": true,
-  "converged_flag_note": "momentGW returns True unconditionally for one-shot GW; it is not a numerical convergence result. Milestone 1.4 replaces it.",
+  "converged_flag_note": "Since Milestone 1.4 this is a numerical convergence result: the realization delivered every moment order it was asked for, and the particle-number error is within tolerance. Records made before 1.4 carry an unconditional True, so a case that steps down reads True there and False here.",
   "n_poles": 168,
   "nelectron": 10.00331337914807,
   "particle_number_error": 0.0033133791480697283,
   "se_n_poles": 144
  },
  "load_average": [
-  4.64,
-  3.15,
-  2.62
+  2.1,
+  2.45,
+  3.1
  ],
  "mean_field": {
   "auxbasis": "weigend",
@@ -101,7 +101,7 @@
   "nelectron": 10,
   "nmo": 24,
   "nocc": 5,
-  "scf_wall_seconds": 0.122,
+  "scf_wall_seconds": 0.108,
   "xc": "hf"
  },
  "moment_error": {
@@ -119,7 +119,7 @@
   "optimise_chempot": false,
   "polarizability": "drpa"
  },
- "peak_memory_gb": 0.1125,
+ "peak_memory_gb": 0.1123,
  "provenance": {
   "blas": {
    "blas": {
@@ -135,26 +135,26 @@
   },
   "code": {
    "baseline_script": {
-    "branch": "worktree-dyson-pin-m1",
-    "commit": "c03432491ade02f36e40367a5ac7e5f8e808c129",
+    "branch": "m1.4-dyson-options",
+    "commit": "d3c7e8b5a804f3aa22cf5bd7343877e422949998",
     "dirty": true,
-    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/dyson-pin-m1/baseline"
+    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m1.4-dyson-options/baseline"
    },
    "dyson": {
     "branch": null,
-    "commit": "054d4b5f9464946a2d972f4bf3e1d058529b596a",
+    "commit": "73cd18d6f0426f238f8df3fd96807f41ea5daa53",
     "dirty": false,
     "path": "/Users/marcusallen/miniconda3/envs/mgw-monomial/lib/python3.11/site-packages/dyson/__init__.py",
-    "requested_revision": "054d4b5f9464946a2d972f4bf3e1d058529b596a",
+    "requested_revision": "73cd18d6f0426f238f8df3fd96807f41ea5daa53",
     "source": "pip direct_url",
     "url": "https://github.com/mkakcl/dyson",
     "version": "1.0.0"
    },
    "momentGW": {
-    "branch": "worktree-dyson-pin-m1",
-    "commit": "c03432491ade02f36e40367a5ac7e5f8e808c129",
+    "branch": "m1.4-dyson-options",
+    "commit": "d3c7e8b5a804f3aa22cf5bd7343877e422949998",
     "dirty": true,
-    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/dyson-pin-m1/momentGW/__init__.py",
+    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m1.4-dyson-options/momentGW/__init__.py",
     "version": "1.0.0"
    }
   },
@@ -169,7 +169,7 @@
     "OPENBLAS_NUM_THREADS": null
    }
   },
-  "recorded_utc": "2026-07-31T00:19:02Z",
+  "recorded_utc": "2026-08-04T00:46:06Z",
   "versions": {
    "numpy": "2.3.5",
    "pyscf": "2.14.0",
@@ -693,15 +693,15 @@
   "source": "GW100 (HCP92 experimental structure) via molecular-mGW-testing gw100 set"
  },
  "timings_seconds": {
-  "dd_moments": 0.0007,
-  "dyson": 0.0786,
-  "eta0": 0.0284,
-  "eta0_oracle": 0.0016,
-  "integrals": 0.0012,
-  "realization_diagnostics": 0.0606,
-  "se_moments_from_dd": 0.0475,
-  "se_moments_streaming": 0.0735,
-  "se_static": 0.0003,
-  "total": 0.296
+  "dd_moments": 0.0006,
+  "dyson": 0.0769,
+  "eta0": 0.0245,
+  "eta0_oracle": 0.0013,
+  "integrals": 0.0017,
+  "realization_diagnostics": 0.0048,
+  "se_moments_from_dd": 0.037,
+  "se_moments_streaming": 0.0619,
+  "se_static": 0.0005,
+  "total": 0.2121
  }
 }

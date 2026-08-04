@@ -72,81 +72,99 @@ reproduced 52/52 by `python -m baseline.check` at each quantity's own tolerance.
 
 ## Milestone 1 - Repair Dyson realization and error reporting
 
-**Status: In progress - 1.1 to 1.3 implemented in `mkakcl/dyson` and consumed here through
-the pin; not yet upstreamed. 1.4 is implemented except for the two parts that depend on
-that upstreaming.**
+**Status: Complete - 1.1 to 1.4 implemented in `mkakcl/dyson` and consumed here through the
+pin, which is now at `73cd18d`.**
 
-Dyson is an external dependency, so these changes should be made upstream in
-`BoothGroup/dyson`, tested there, and then consumed here through an immutable commit.
-A private runtime patch in momentGW is not an acceptable final solution.
+Dyson is an external dependency, so these changes are made in `mkakcl/dyson`, tested there,
+and consumed here through an immutable commit. A private runtime patch in momentGW is not
+an acceptable final solution.
 
-The pin currently points at the fork, so the milestone is consumed but not accepted. The
-baseline has been re-recorded against it: see [`baseline/README.md`](baseline/README.md) for
-what changed, in particular the three cases whose realization now steps down from the order
-they were asked for.
+**Acceptance is that pin, not a merge into `BoothGroup/dyson`** (decided 2026-08-03).
+An earlier version of this section said the work had to be upstreamed before the milestone
+could close, and that was what "the accepted Dyson commit" in 1.4 meant. It no longer is: a
+commit on the fork that the baseline has been recorded against is the accepted state, and
+the milestone closes on it. Nothing here is a licence to push to `BoothGroup/dyson` - see
+[`CLAUDE.md`](CLAUDE.md).
+
+The baseline has been re-recorded against the pin twice: at `054d4b5`, where three cases
+began stepping down from the order they were asked for, and at `73cd18d`, which moved
+nothing at all. See [`baseline/README.md`](baseline/README.md).
 
 ### 1.1 Reconstructed-moment diagnostic
 
-- [ ] Fix `MBLSE.reconstruct_moments`: the current implementation reconstructs
+- [x] Fix `MBLSE.reconstruct_moments`: the current implementation reconstructs
   `range(2 * iteration)`, while the error routine compares against
   `2 * iteration + 2` input moments. Python `zip` silently omits the newest two
   moments, and iteration zero checks none.
-- [ ] Assert equal predicted and reference moment counts before computing an error.
-- [ ] Report per-order absolute and relative Frobenius and maximum-norm errors.
-- [ ] Separate errors before and after any intentional chemical-potential pole shift.
+- [x] Assert equal predicted and reference moment counts before computing an error.
+- [x] Report per-order absolute and relative Frobenius and maximum-norm errors.
+- [x] Separate errors before and after any intentional chemical-potential pole shift.
 
 ### 1.2 Matrix square root and inverse square root
 
-- [ ] Replace the fixed absolute `1e-10` eigenvalue cutoff with a scale-aware
+- [x] Replace the fixed absolute `1e-10` eigenvalue cutoff with a scale-aware
   `atol + rtol * lambda_max` policy.
-- [ ] Treat the square root and inverse square root with one consistent effective
+- [x] Treat the square root and inverse square root with one consistent effective
   support.
-- [ ] Clip only negative eigenvalues that are demonstrably compatible with roundoff.
+- [x] Clip only negative eigenvalues that are demonstrably compatible with roundoff.
   Fail on materially negative directions.
-- [ ] Report the minimum eigenvalue, condition estimate, effective rank, discarded
+- [x] Report the minimum eigenvalue, condition estimate, effective rank, discarded
   norm, and the resulting reconstructed-moment error.
-- [ ] Do not describe the norm of discarded original eigenvalues as the error in an
+- [x] Do not describe the norm of discarded original eigenvalues as the error in an
   inverse square root.
 
 ### 1.3 Realization feasibility
 
-- [ ] Validate finite, Hermitian moments before starting the recurrence.
-- [ ] Validate positive semidefiniteness and causality where required by the measure.
-- [ ] When the requested order is not supportable, step down to the largest order that
+- [x] Validate finite, Hermitian moments before starting the recurrence.
+- [x] Validate positive semidefiniteness and causality where required by the measure.
+- [x] When the requested order is not supportable, step down to the largest order that
   satisfies a delivered-moment residual and report the reduction.
-- [ ] Validate moment-order parity. Either require odd `nmom_max` for the current MBLSE
+- [x] Validate moment-order parity. Either require odd `nmom_max` for the current MBLSE
   construction or define and report exactly which supplied moments are used.
-- [ ] Avoid repeated intermediate diagonalizations used only for diagnostics unless
+- [x] Avoid repeated intermediate diagonalizations used only for diagnostics unless
   error reporting is enabled.
 
 ### 1.4 momentGW integration
 
-- [ ] Pass explicit Dyson numerical options from `momentGW/gw.py`. The `dyson_opts`
-  option states the three MBLSE accepts. The scale-aware tolerances from 1.2 are not
-  among them: `MBLSE._options` does not accept `atol`, `rtol`, `neg_atol` or `neg_rtol`,
-  and `set_options` raises on anything it does not know, so the `matrix_power` calls
-  inside the recurrence take the library defaults. Blocked on widening that option
-  surface upstream.
+- [x] Pass explicit Dyson numerical options from `momentGW/gw.py`. `MBLSE._options` was
+  `{calculate_errors, force_orthogonality, max_cycle, hermitian}` and `set_options` raises
+  on anything else, so the scale-aware tolerances from 1.2 could not be stated and every
+  `matrix_power` inside the recurrence took the library defaults. `mkakcl/dyson#4` widened
+  both layers - `matrix_power` now forwards `atol`, `rtol`, `neg_atol` and `neg_rtol`, and
+  the solvers accept them as ordinary options reaching all 15 call sites - so `dyson_opts`
+  now states all seven. The four tolerances are set to the Dyson defaults: the point is
+  that they are written down here rather than inherited, so a change of pin cannot move
+  them silently.
 - [x] Replace unconditional single-shot `conv=True` with a numerical convergence
   result that includes realization and particle-number gates.
 - [x] Store structured diagnostics on the GW object instead of only writing log text.
   `gw.dyson_diagnostics` carries them and `gw.dyson_solvers` retains the solvers, so
   `baseline/run.py` no longer rebuilds a second pair to read them off.
-- [ ] Pin momentGW to the accepted Dyson commit. Blocked: the pin is still the fork.
+- [x] Pin momentGW to the accepted Dyson commit: `mkakcl/dyson@73cd18d`. The fork is the
+  accepted state, so this is the terminal pin rather than a placeholder for an upstream
+  one. Moving it re-recorded the baseline, which moved nothing: 52/52 unchanged.
 
 Restricted molecular only. The unrestricted and periodic solvers share this kernel but
 override `solve_dyson` without gating it, and keep the unconditional flag until they do.
 
 ### Acceptance gate
 
-- Synthetic positive matrix measures reconstruct every promised moment through the
-  requested order.
-- A test fails if predicted and reference moment counts differ.
-- Small positive support directions are either preserved or explicitly rejected by a
-  scale-aware rule with a measurable moment effect.
-- Materially non-PSD input fails loudly.
-- Requested and achieved moment orders are both reported.
-- Existing low-order G0W0 QP energies remain unchanged within the baseline tolerance.
+All criteria pass. The tests named are in `mkakcl/dyson`, where the whole suite is 915
+passed, 40 skipped at the pinned commit.
+
+- **Passed** - synthetic positive matrix measures reconstruct every promised moment
+  through the requested order (`tests/test_mbl_moment_errors.py`).
+- **Passed** - a test fails if predicted and reference moment counts differ;
+  `moment_errors` raises rather than comparing a truncated pair.
+- **Passed** - small positive support directions are either preserved or explicitly
+  rejected by a scale-aware rule with a measurable moment effect
+  (`tests/test_matrix_power.py`, and `tests/test_mbl_tolerance_options.py` where a loosened
+  `rtol` is shown to degrade the conserved moments).
+- **Passed** - materially non-PSD input fails loudly (`tests/test_mbl_realization.py`).
+- **Passed** - requested and achieved moment orders are both reported, by the solver and
+  on `gw.dyson_diagnostics`.
+- **Passed** - existing low-order G0W0 QP energies remain unchanged within the baseline
+  tolerance: 52/52 unchanged across both pin moves.
 
 ## Milestone 2 - Stable eta0 through HHT/Zolotarev
 
@@ -437,10 +455,12 @@ This track runs alongside every milestone rather than at the end.
 
 1. **Baseline and dependency control** - fixtures, provenance, packaging metadata, and
    an immutable Dyson pin.
-2. **Dyson diagnostic correction** - upstream reconstruction-count tests and accurate
-   per-order residuals.
+2. **Dyson diagnostic correction** - reconstruction-count tests and accurate per-order
+   residuals. Delivered as `mkakcl/dyson#1`.
 3. **Dyson support/PSD policy** - scale-aware matrix powers, rank reporting, and
-   feasibility gates; update the momentGW pin.
+   feasibility gates; update the momentGW pin. Delivered as `mkakcl/dyson#2` and `#3`,
+   with `#4` making the support policy statable from `dyson_opts`; the pin is at
+   `73cd18d`.
 4. **HHT scalar layer** - stable coefficients, rigorous bounds, exact scalar error
    checks, and high-precision tests. Delivered together with 5 on the
    `m2-hht-eta0` branch.

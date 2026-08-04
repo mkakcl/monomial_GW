@@ -46,7 +46,7 @@
    "mtilde_condition": 24.634251435211635,
    "mtilde_max_eigenvalue": 18.654081985988267,
    "mtilde_min_eigenvalue": 0.7572416817717688,
-   "relative_error": 8.804730866935995e-16
+   "relative_error": 8.804730866935996e-16
   },
   "quarter_grid_difference": 0.0008202488476644631,
   "rank_1e-10": 9,
@@ -73,16 +73,16 @@
  "green_function": {
   "chempot": -0.2976491008807277,
   "converged_flag": true,
-  "converged_flag_note": "momentGW returns True unconditionally for one-shot GW; it is not a numerical convergence result. Milestone 1.4 replaces it.",
+  "converged_flag_note": "Since Milestone 1.4 this is a numerical convergence result: the realization delivered every moment order it was asked for, and the particle-number error is within tolerance. Records made before 1.4 carry an unconditional True, so a case that steps down reads True there and False here.",
   "n_poles": 50,
   "nelectron": 2.0018496192760935,
   "particle_number_error": 0.001849619276093506,
   "se_n_poles": 40
  },
  "load_average": [
-  4.78,
-  3.15,
-  2.61
+  2.1,
+  2.45,
+  3.1
  ],
  "mean_field": {
   "auxbasis": "weigend",
@@ -95,7 +95,7 @@
   "nelectron": 2,
   "nmo": 10,
   "nocc": 1,
-  "scf_wall_seconds": 0.075,
+  "scf_wall_seconds": 0.08,
   "xc": "hf"
  },
  "moment_error": {
@@ -113,7 +113,7 @@
   "optimise_chempot": false,
   "polarizability": "drpa"
  },
- "peak_memory_gb": 0.0989,
+ "peak_memory_gb": 0.1001,
  "provenance": {
   "blas": {
    "blas": {
@@ -129,26 +129,26 @@
   },
   "code": {
    "baseline_script": {
-    "branch": "worktree-dyson-pin-m1",
-    "commit": "c03432491ade02f36e40367a5ac7e5f8e808c129",
+    "branch": "m1.4-dyson-options",
+    "commit": "d3c7e8b5a804f3aa22cf5bd7343877e422949998",
     "dirty": true,
-    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/dyson-pin-m1/baseline"
+    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m1.4-dyson-options/baseline"
    },
    "dyson": {
     "branch": null,
-    "commit": "054d4b5f9464946a2d972f4bf3e1d058529b596a",
+    "commit": "73cd18d6f0426f238f8df3fd96807f41ea5daa53",
     "dirty": false,
     "path": "/Users/marcusallen/miniconda3/envs/mgw-monomial/lib/python3.11/site-packages/dyson/__init__.py",
-    "requested_revision": "054d4b5f9464946a2d972f4bf3e1d058529b596a",
+    "requested_revision": "73cd18d6f0426f238f8df3fd96807f41ea5daa53",
     "source": "pip direct_url",
     "url": "https://github.com/mkakcl/dyson",
     "version": "1.0.0"
    },
    "momentGW": {
-    "branch": "worktree-dyson-pin-m1",
-    "commit": "c03432491ade02f36e40367a5ac7e5f8e808c129",
+    "branch": "m1.4-dyson-options",
+    "commit": "d3c7e8b5a804f3aa22cf5bd7343877e422949998",
     "dirty": true,
-    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/dyson-pin-m1/momentGW/__init__.py",
+    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m1.4-dyson-options/momentGW/__init__.py",
     "version": "1.0.0"
    }
   },
@@ -163,7 +163,7 @@
     "OPENBLAS_NUM_THREADS": null
    }
   },
-  "recorded_utc": "2026-07-31T00:19:02Z",
+  "recorded_utc": "2026-08-04T00:46:06Z",
   "versions": {
    "numpy": "2.3.5",
    "pyscf": "2.14.0",
@@ -187,19 +187,19 @@
   "hole": {
    "errors": {
     "absolute_frobenius": [
-     5.680507278357084e-16,
-     2.191277247418927e-15,
-     9.82319648039917e-15,
-     4.677708710933119e-14
+     1.0797859349317263e-15,
+     4.5463786447485196e-15,
+     2.1593697991893504e-14,
+     1.0741388776211892e-13
     ],
     "absolute_max": [
-     2.0296264668928643e-16,
-     1.1449174941446927e-15,
-     5.717648576819556e-15,
-     2.7977620220553945e-14
+     3.3319697720121274e-16,
+     1.4763782938729367e-15,
+     7.66053886991358e-15,
+     4.0523140398818214e-14
     ],
     "chempot": 0.0,
-    "max_relative_frobenius": 2.0918076992654162e-14,
+    "max_relative_frobenius": 4.803402933228182e-14,
     "orders": [
      0,
      1,
@@ -207,18 +207,18 @@
      3
     ],
     "relative_frobenius": [
-     6.0136269920930456e-15,
-     9.474621672677587e-15,
-     1.4927168589469418e-14,
-     2.0918076992654162e-14
+     1.1431073891460417e-14,
+     1.9657584493459486e-14,
+     3.2813430031482324e-14,
+     4.803402933228182e-14
     ],
     "relative_max": [
-     4.24072418111466e-15,
-     1.1918748334243782e-14,
-     2.176791312843978e-14,
-     2.971490110924258e-14
+     6.9618548109230935e-15,
+     1.5369300775648657e-14,
+     2.916477681286106e-14,
+     4.3039440098704534e-14
     ],
-    "total_scaled": 8.76089041710301e-14
+    "total_scaled": 1.8559540473604732e-13
    },
    "max_cycle": 1,
    "max_cycle_achieved": 1,
@@ -229,16 +229,16 @@
    "order_reduced": false,
    "reconstructed_moments": {
     "frobenius": [
-     0.09446058569688515,
-     0.23127860120663246,
-     0.6580750007291405,
-     2.236203984035306
+     0.09446058569688558,
+     0.2312786012066349,
+     0.658075000729155,
+     2.2362039840353933
     ],
     "max_abs": [
-     0.04786037431841125,
-     0.0960602121999021,
-     0.2626640662833867,
-     0.9415350270794237
+     0.04786037431841135,
+     0.09606021219990238,
+     0.2626640662833965,
+     0.9415350270794689
     ],
     "orders": [
      0,
@@ -252,19 +252,19 @@
   "particle": {
    "errors": {
     "absolute_frobenius": [
-     2.6901981230556836e-15,
-     1.0274572912216272e-14,
-     4.2069046399024266e-14,
-     1.9425540093395067e-13
+     3.3572031266446934e-15,
+     1.2005801291627042e-14,
+     5.4634783104543634e-14,
+     2.8385521697740645e-13
     ],
     "absolute_max": [
-     8.743006318923108e-16,
-     3.2751579226442118e-15,
-     1.4395616282986095e-14,
-     6.130476805739681e-14
+     1.3183898417423734e-15,
+     5.329070518200751e-15,
+     2.5979218776228663e-14,
+     1.4033219031261979e-13
     ],
     "chempot": 0.0,
-    "max_relative_frobenius": 1.0139162298859909e-14,
+    "max_relative_frobenius": 1.4815825456974524e-14,
     "orders": [
      0,
      1,
@@ -272,18 +272,18 @@
      3
     ],
     "relative_frobenius": [
-     8.973355032410119e-15,
-     9.807422041877188e-15,
-     1.0020832237169267e-14,
-     1.0139162298859909e-14
+     1.1198199609581911e-14,
+     1.1459937189009867e-14,
+     1.3013986354999952e-14,
+     1.4815825456974524e-14
     ],
     "relative_max": [
-     6.011451523445937e-15,
-     6.4547406711001e-15,
-     6.899589655378638e-15,
-     6.0963609443054626e-15
+     9.064887217894666e-15,
+     1.0502628888569654e-14,
+     1.245142587852478e-14,
+     1.3955124721289493e-14
     ],
-    "total_scaled": 5.3155963276854305e-14
+    "total_scaled": 7.880807990968064e-14
    },
    "max_cycle": 1,
    "max_cycle_achieved": 1,
@@ -294,16 +294,16 @@
    "order_reduced": false,
    "reconstructed_moments": {
     "frobenius": [
-     0.29979847151251365,
-     1.047632381715025,
-     4.198158935640257,
-     19.15892015613487
+     0.29979847151251393,
+     1.0476323817150264,
+     4.1981589356402615,
+     19.158920156134883
     ],
     "max_abs": [
      0.14543918860234506,
-     0.5074034867594455,
-     2.0864452818239405,
-     10.055961026169333
+     0.507403486759446,
+     2.0864452818239436,
+     10.055961026169353
     ],
     "orders": [
      0,
@@ -518,14 +518,14 @@
  },
  "timings_seconds": {
   "dd_moments": 0.0001,
-  "dyson": 0.0406,
-  "eta0": 0.0199,
-  "eta0_oracle": 0.0002,
-  "integrals": 0.001,
-  "realization_diagnostics": 0.0335,
-  "se_moments_from_dd": 0.0158,
-  "se_moments_streaming": 0.0308,
-  "se_static": 0.0003,
-  "total": 0.1445
+  "dyson": 0.0327,
+  "eta0": 0.0122,
+  "eta0_oracle": 0.0001,
+  "integrals": 0.0007,
+  "realization_diagnostics": 0.001,
+  "se_moments_from_dd": 0.0104,
+  "se_moments_streaming": 0.0218,
+  "se_static": 0.0002,
+  "total": 0.0809
  }
 }
