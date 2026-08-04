@@ -168,13 +168,27 @@ passed, 40 skipped at the pinned commit.
 
 ## Milestone 2 - Stable eta0 through HHT/Zolotarev
 
-**Status: Gated - implemented as an opt-in (`eta0_method="hht"`) in `momentGW/eta0.py`
-and `momentGW/rpa.py`, with Clenshaw-Curtis unchanged as the default and reference.
-The two numerical questions that were open are now settled: the `eta0_tol` default is
-accepted at 1e-14 on the measured eta0 error leg (2.4), and the serial/multi-rank MPI
-agreement gate is waived unmeasured (see the acceptance gate). What keeps the milestone
-gated is only that the default has not flipped, which is pull request 6 - a separate
-change with its own downstream validation.**
+**Status: Complete - `eta0_method="hht"` is the default for the restricted molecular dRPA
+path as of 2026-08-04. Clenshaw-Curtis is retained, unchanged, as the independent
+reference the guiding rules ask for, and remains the default for the unrestricted and
+periodic solvers, which reject an explicit `"hht"`. The serial/multi-rank MPI agreement
+gate was waived unmeasured; every other criterion passed.**
+
+Flipping the default moved one of the 52 baseline cases: `ozone_pbe_nmom7_ia`, the
+small-gap system at the highest moment order, by 7.4e-9 eV in the HOMO and 5.7e-7 Ha
+across all quasiparticle energies. That movement is Clenshaw-Curtis error being removed,
+not introduced. Against a dense eigendecomposition of `Mtilde` for that system
+(condition 6.7e4), the two routes measure:
+
+| route | relative error against the dense oracle |
+| --- | --- |
+| `clencur`, 48 points | 1.151e-09 |
+| `hht`, 26 poles | 2.100e-13 |
+
+The two routes differ from each other by 1.151e-09 - that is, the whole of the difference
+is the legacy route's error, and the baseline had been recording it. HHT is also the
+cheaper of the two: 20 poles against 48 quadrature points on benzene/cc-pVDZ, 1.82x
+faster on the eta0 stage alone.
 
 The new method computes the same projected zeroth dRPA moment as the current
 Clenshaw-Curtis integral:
@@ -308,8 +322,10 @@ formed; no particle-hole squared matrix is allowed.
   small-gap cases are covered.
 - **Passed** - shape instrumentation proves that no particle-hole squared matrix is
   formed.
-- **Held** - HHT becomes the default only after all gates pass; legacy code is
-  removed in a later change. The default remains `"clencur"`.
+- **Passed** - HHT becomes the default only after all gates pass. Flipped on
+  2026-08-04, with the MPI gate waived rather than passed. Legacy code is not removed:
+  the guiding rules keep Clenshaw-Curtis as an independent reference, and it stays the
+  default for the unrestricted and periodic solvers.
 
 ## Milestone 3 - Higher-order moment stability and propagated errors
 
@@ -365,12 +381,48 @@ formed; no particle-hole squared matrix is allowed.
 
 ## Milestone 4 - Optimize the verified restricted molecular path
 
-**Status: Planned**
+**Status: In progress - the external-orbital loop is batched; everything else is planned.
+Measured on benzene, PBE starting point, `nmom_max = 3` unless stated, against the
+profiled current code.**
+
+### What the profile actually says
+
+Before optimising further, where the time goes on benzene/cc-pVDZ, `nmom_max = 3`
+(12.0 s total): the eta0 stage is 34%, and the external-orbital rotation in
+`build_se_moments` is a further ~23%. `build_dd_moments` is already two BLAS-3 GEMMs per
+order with nothing to recover, and `convolve` is 1%. Two changes have been taken, both
+constant-factor and neither touching how a moment is defined: making HHT the default
+(Milestone 2) and batching the loop below. Together they are **1.46x** on
+benzene/cc-pVDZ at `nmom_max = 3`, **1.51x** at `nmom_max = 7`, and **1.41x** on
+cc-pVTZ.
+
+Two measurements worth keeping, because they contradict assumptions written elsewhere in
+this roadmap:
+
+- **"Never form an explicit inverse" is an accuracy rule, not a speed rule.** At
+  `naux = 551`, `nov = 1953`, `cho_factor` plus `cho_solve` costs 30.2 ms against 28.6 ms
+  for `inv` plus a GEMM: both are dominated by the `naux^2 nov` apply, and the triangular
+  solves are slower per flop than the GEMM. Cholesky wins below roughly `nov = 2 naux` and
+  LU above `nov = 4 naux`. Keep the rule for its numerical merits, but do not expect it to
+  pay.
+- **Reassociating the back half is not verifiable at high moment order.** The batched loop
+  below performs identical arithmetic in a different summation order. The resulting shift
+  in the quasiparticle energies, on benzene/cc-pVDZ, is 6.5e-13 eV at `nmom_max = 1` and
+  5.2e-8 eV at `nmom_max = 7` - while the HOMO stays at ~1e-13 eV throughout. The frontier
+  is well conditioned and the deep states are not, which is Milestone 3.2 and 3.4 exactly.
+  Until those land, an optimisation of this stage can only be validated on the frontier.
 
 ### Work
 
-- [ ] Batch the external-orbital loop in `momentGW/tda.py` into larger BLAS-3
-  contractions.
+- [x] Batch the external-orbital loop in `momentGW/tda.py` into larger BLAS-3
+  contractions. 701 ms to 245 ms per moment order on benzene/cc-pVDZ. Most of that is
+  layout rather than batching: batching alone reaches 533 ms (17.9 GFLOP/s), and it takes
+  reordering the integrals so the external index leads - so that both operands of the
+  batch are contiguous - to reach 245 ms (38.9 GFLOP/s). **Memory:** the reorder is a copy,
+  so peak usage carries a second `Lpx` (`naux * nmo * nx` doubles) for the duration of
+  `build_se_moments` - 0.06 GB on benzene/cc-pVDZ, 0.36 GB on cc-pVTZ. Emitting that
+  layout from `Integrals.transform` would remove the copy entirely, but `Lpx` is shared
+  with the unrestricted and periodic solvers and so is deferred to Milestone 6.
 - [ ] Refactor convolution so moment orders accumulate locally and perform one final
   MPI reduction and symmetrization instead of reducing full stacks repeatedly.
 - [ ] Batch several HHT Gram reductions or overlap nonblocking reductions with local
@@ -467,9 +519,10 @@ This track runs alongside every milestone rather than at the end.
 5. **HHT projected eta0** - restricted molecular kernel, MPI path, and dense/legacy
    equivalence tests behind an opt-in flag. Delivered together with 4; the
    multi-rank MPI run is the piece still owed.
-6. **HHT default** - downstream G0W0 invariance, small-gap validation, documentation,
-   and deprecation of Clenshaw-Curtis-specific options. Not started: blocked on the
-   MPI gate and the Milestone 3 tolerance derivation.
+6. **HHT default** - downstream G0W0 invariance, small-gap validation and documentation
+   delivered 2026-08-04. Clenshaw-Curtis-specific options are *not* deprecated: the
+   legacy route stays as the independent reference and as the unrestricted and periodic
+   default, so `npoints` keeps its meaning.
 7. **Higher-order stabilization** - error propagation, scaled moments, adaptive order,
    and realization gates.
 8. **Back-half and communication optimization** - only after profiling the accepted
