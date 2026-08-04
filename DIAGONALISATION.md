@@ -47,6 +47,13 @@ that one, and the claim that the arrowhead shift-invert costs `O(n)` per solve w
 `O(n * nphys)`. Everything labelled as measured has been measured; treat the effort
 estimates in §5 as judgement, and the one for Option 2 as little better than a guess.
 
+**Second update — §7 adds implementation plans, and one more measurement moves Option 3.**
+The chemical-potential search and the density matrix both need every pole below the
+chemical potential, which is **45% of the spectrum** on benzene/cc-pVTZ — not a frontier
+window. Since shift-invert loses to dense above ~10% of the spectrum, a windowed solve
+returns nothing on the default path until `N(mu)` and the density matrix are obtained some
+other way. See §7.1; it is the single most important paragraph in this document.
+
 ## 1. What the code does today
 
 Per restricted molecular G0W0, three dense eigendecompositions:
@@ -333,7 +340,10 @@ The ceiling measurement in §5.1 is done, and it reorders the list:
    from momentGW, which still pins `73cd18d`.
 2. **Then decide whether a windowed mode is wanted at all** — not on performance grounds,
    which cap out at ~1.2x, but on whether there are calculations where a frontier band is
-   genuinely the whole answer. If yes, the kernel is a day and the specification is a week.
+   genuinely the whole answer. ~~If yes, the kernel is a day and the specification is a
+   week.~~ **Superseded by §7.1**: a window cannot serve the default path at all until the
+   electron count and the density matrix stop being computed from the eigenpair list. Read
+   §7.5 for what that costs.
 3. **Treat Option 2 as research**, gated behind the same standard as eta0: a certificate on
    the computed spectrum, validated against the dense solve on the baseline systems, before
    it goes anywhere near a default. Its ~9x on a kernel that saturates at 10x means it is now
@@ -344,6 +354,176 @@ None of this is urgent, and the whole area is now bounded: **at most 1.10x on cc
 1.19x on cc-pVTZ, even with a free eigensolver.** The `O(N^3)`-versus-`O(N^4)` trend works
 against it as systems grow. The Milestone 3 conditioning work is worth more — including to
 Option 3, which would be far easier to specify if we knew which poles were converged.
+
+Per-change plans, with kill criteria, are in §7. The ordering there supersedes this list.
+
+## 7. Implementation plans
+
+Added 2026-08-04, after a further measurement that changes Option 3 materially (§7.1).
+Each plan states where the change goes, how it is verified, and — the part usually left
+out — **what result would make us stop**.
+
+Common to all of them: dyson changes land on `mkakcl/dyson` and reach momentGW only through
+the pin, so every one of these carries a pin bump and a baseline re-record at the end. That
+ceremony is ~30 minutes and is the reason none of these is worth doing for its own sake in
+isolation.
+
+### 7.1 The finding that reorders everything
+
+**A frontier window cannot serve the default code path.** Two consumers need the whole
+occupied half of the upfolded spectrum, not a window:
+
+- `search_chempot` (`momentGW/fock.py:21`) walks eigenpairs upward from the bottom of the
+  spectrum accumulating physical weight `2 |v_phys,i|^2` until it reaches `nelec`. It needs
+  every pole below the chemical potential.
+- `make_rdm1` (`momentGW/gw.py`) is `gf.occupied().moment(0) * 2`, a sum over every occupied
+  pole's physical-block eigenvector.
+
+Measured on benzene/cc-pVTZ at `nmom_max = 7`: **1077 of 2376 poles lie below the chemical
+potential, or 45% of the spectrum**, and `search_chempot` consumes all 1077 of them.
+
+Put that next to the crossover in §5.1 — shift-invert loses to dense above roughly 10% of
+the spectrum — and Option 3 as originally described **returns nothing on the default path**.
+The 78x is real, and unreachable, unless the electron count and the density matrix come from
+somewhere other than enumerated eigenpairs.
+
+That is possible, and it is the interesting part of Option 3 rather than an obstacle to it:
+`N(mu) = Tr[P_phys theta(mu - A)]` is a spectral projector, evaluable by contour integration
+of the resolvent, and the resolvent of an arrowhead matrix is exactly the `O(n * nphys)`
+solve already prototyped. The same contour gives the density matrix. This is Milestone 5
+technology pointed at a different target, and it is a much larger job than "call `eigsh`
+with a window".
+
+### 7.2 Diagnostic re-diagonalisation — done, pin deferred
+
+Implemented and merged as `mkakcl/dyson#5` (`cc2f48f`); see §5.1 for the measured size.
+
+**Remaining step.** Nothing, until the pin next moves. When it does:
+
+1. Bump `dyson @ git+...@<sha>` in `pyproject.toml`, reinstall into `mgw-monomial`.
+2. `python -m baseline.check` — expect **52/52 unchanged**, since this changes no numbers.
+   It was already verified against this build before merge.
+3. Re-record in the same commit, as every pin move requires. Provenance-only.
+
+**Do not bump the pin for this alone.** Re-recording 52 cases to collect under 1% is
+disproportionate, and the fix is not going anywhere.
+
+### 7.3 Option 1 — first block row only
+
+**Goal.** Stop computing the 75% of the block-tridiagonal eigenvector matrix that
+`_solve` discards.
+
+**Where.** `dyson/solvers/static/mblse.py`, the `util.eig_lr(subspace, ...)` call inside
+`_solve`, and its counterpart in `mblgf.py`. Nothing in momentGW changes.
+
+**Steps.**
+
+1. **Prototype outside the package first**, on the exact sizes from §3. Reduce the block
+   tridiagonal to scalar tridiagonal, take eigenvalues from `dsterf`, and accumulate only
+   the first `nphys` rows of the transformation through the QL sweeps — the Golub–Welsch
+   structure. Compare against `numpy.linalg.eigh` for both time and agreement.
+2. Only if it wins: implement behind an option, defaulting off, with the dense path retained
+   as the reference.
+3. Tests: eigenvalues and first-block-row couplings agree with the dense route to machine
+   precision on the existing MBLSE/MBLGF fixtures, including the degenerate and clustered
+   cases in `tests/test_mbl_realization.py`.
+4. Pin bump and re-record. This one **will** move numbers at the last bit, so expect the
+   deep-state movement described in Milestone 4 and check the frontier holds.
+
+**Kill criterion — expect to use it.** If step 1 is not at least **2x faster than
+`dsyevd`** on the real sizes before any tuning, stop and delete the prototype. §4 is the
+precedent: a quarter of the arithmetic lost 5.5x to BLAS-3 in exactly this shape. There is
+no LAPACK driver for "all eigenvalues, first `k` rows of eigenvectors", so this is a
+hand-written sweep competing with a blocked, tuned library routine.
+
+**Payoff if it works.** Under 2% of a calculation. **Effort**: 2–3 days, most of it step 1.
+This is a prototype-and-probably-discard, and should be costed as one.
+
+### 7.4 Option 2 — arrowhead / DPRk secular solver
+
+**Goal.** Replace the dense `eigh` on the upfolded supermatrix with a structure-exploiting
+solver, ~9x on the largest single eigendecomposition.
+
+**Where.** `dyson/representations/lehmann.py:638`, inside `diagonalise_matrix`.
+
+**Steps.**
+
+1. **Reproduce the reference first.** Port or call Arrowhead.jl's algorithm on random
+   arrowhead matrices and confirm the published accuracy claim before touching this problem.
+   If the reference implementation cannot be reproduced, stop here.
+2. **Two-stage reduction.** Diagonalise the `nphys` head (`nphys^3`, negligible), transform
+   the border, leaving diagonal-plus-rank-`nphys`. Handle it as `nphys` successive rank-1
+   updates, each an `O(n^2)` secular solve.
+3. **Certificate, not a return code.** Per-eigenpair residual `||A x - lambda x||`, the
+   orthogonality `||X^T X - I||`, and an explicit failure when a cluster cannot be resolved.
+   This is the eta0 standard and it is not optional here: a secular solver that misconverges
+   on a cluster returns plausible poles, and this project's whole premise is not accepting
+   those.
+4. Validate against the dense solve on all 52 baseline systems before it is allowed to be a
+   default; ship it opt-in first, exactly as HHT was.
+5. Pin bump and re-record.
+
+**Kill criteria.** Stop if step 1 fails; if the measured speedup on the real sizes is below
+**3x** (below that it is not worth the accuracy risk, and §4 says measure before believing);
+or if clustered eigenvalues need extended precision in the inner loop and the result is no
+longer faster once that is included.
+
+**Payoff.** Competes for the same ~1.2x ceiling that Option 3 targets more cheaply, so it is
+only worth starting if Option 3 is ruled out. **Effort**: weeks, and I have no basis for a
+tighter figure — treat it as research with an open end.
+
+### 7.5 Option 3 — windowed solve, and what it now requires
+
+**Goal.** Compute only the poles that are wanted, and only the poles that are trustworthy.
+
+**Where.** `dyson/representations/lehmann.py` for the solver mode; `momentGW/fock.py` and
+`momentGW/gw.py` for the two consumers identified in §7.1.
+
+This is now a two-part job, and the first part is the real one.
+
+**Part A — decouple the electron count and density matrix from the eigenpair list.**
+
+1. Implement the arrowhead resolvent as a first-class object — the 15-line operator
+   prototyped for §5.1, plus its Schur-complement setup.
+2. Evaluate `N(mu)` and the occupied-block density matrix by contour integration of that
+   resolvent, and validate both against the current eigen-decomposition route on the
+   baseline systems to the accuracy the particle-number gate already demands (`1e-6`
+   on `conv_tol_nelec`).
+3. Only when `N(mu)` and the RDM no longer require an eigenpair list does a windowed solve
+   become possible at all.
+
+**Part B — the windowed solve itself.**
+
+4. Add a mode that returns a requested window plus a buffer, using shift-invert Lanczos with
+   the Part A resolvent as `OPinv`.
+5. Specify what a calculation in this mode may report: frontier QP energies yes; spectral
+   functions and deep satellites no. The mode must be recorded in the diagnostics, and the
+   off-diagonal-coupling check Milestone 4 already asks for belongs here.
+6. Pin bump and re-record.
+
+**Kill criteria.** Stop if Part A's contour cannot hit the particle-number tolerance at a
+cost below the dense solve it replaces — that is the whole premise. Stop if the required
+window, once the buffer is honest, exceeds ~10% of the spectrum, since §5.1 shows
+shift-invert loses there.
+
+**Payoff.** Bounded by §5.1 at 1.10x (cc-pVDZ) to 1.19x (cc-pVTZ), and only for calculations
+that genuinely want a frontier band. **Effort**: Part A is 1–2 weeks and is where the risk
+is; Part B is a few days on top. My earlier "1 day kernel plus a week of specification" was
+written before §7.1 and understated this by a lot.
+
+### 7.6 Suggested order, and the honest recommendation
+
+1. Nothing, until a pin bump is wanted for another reason — then §7.2 rides along free.
+2. If someone wants to spend two days on it: §7.3, expecting to discard it. It is
+   self-contained and answers a question that will otherwise keep being asked.
+3. §7.5 Part A **only if it is wanted for its own sake** — a cheap spectral projector for
+   `N(mu)` and the density matrix is useful well beyond this document, and would also serve
+   Milestone 3's error budget. Justifying it by the 1.19x alone does not work.
+4. §7.4 last, and only if 3 is ruled out.
+
+The recommendation from §6 stands and is strengthened by §7.1: the whole area is capped near
+1.2x, the one option that looked like a clean win needs a substantial prerequisite before it
+returns anything on the default path, and Milestone 3 is worth more than all of it.
 
 ## References
 
