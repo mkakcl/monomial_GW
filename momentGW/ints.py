@@ -259,10 +259,16 @@ class Integrals(BaseIntegrals):
         nocc_w = self.nocc_w
         nvir_w = self.nvir_w
 
-        # Get the compression metric
+        # Get the compression metric. `None` means the auxiliary space was not compressed,
+        # either because compression was not requested or because it removed nothing.
+        #
+        # The rotation was previously an explicit identity, which is not merely a redundant
+        # multiply: `rot[b0:b1].T @ block` scatters each block up to the full auxiliary
+        # height, so every block was contracted against an (naux_full, naux_full) identity
+        # and then accumulated into the whole array. Skipping it means each block instead
+        # lands in the rows it belongs to, which is what `compressed` below selects.
         rot = self._rot
-        if rot is None:
-            rot = np.eye(self.naux_full)
+        compressed = rot is not None
 
         # Check which arrays to build
         do_Lpq = self.store_full if do_Lpq is None else do_Lpq
@@ -296,7 +302,8 @@ class Integrals(BaseIntegrals):
                     )
 
                 # Compress the block
-                block = np.dot(rot[b0:b1].T, block)
+                if compressed:
+                    block = np.dot(rot[b0:b1].T, block)
 
                 # Build the compressed (L|px) array
                 if do_Lpx:
@@ -308,7 +315,10 @@ class Integrals(BaseIntegrals):
                         aosym="s2",
                         mosym="s1",
                     )
-                    Lpx += tmp.reshape(Lpx.shape)
+                    if compressed:
+                        Lpx += tmp.reshape(Lpx.shape)
+                    else:
+                        Lpx[b0:b1] += tmp.reshape(b1 - b0, *Lpx.shape[1:])
 
                 # Build the compressed (L|ia) array
                 if do_Lia:
@@ -321,7 +331,10 @@ class Integrals(BaseIntegrals):
                         aosym="s2",
                         mosym="s1",
                     )
-                    Lia += tmp[:, a0 : a0 + (q1 - q0)]
+                    if compressed:
+                        Lia += tmp[:, a0 : a0 + (q1 - q0)]
+                    else:
+                        Lia[b0:b1] += tmp[:, a0 : a0 + (q1 - q0)]
 
         # Store the arrays
         if do_Lpq:
