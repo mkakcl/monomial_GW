@@ -402,8 +402,27 @@ cc-pVTZ.
 
 **That paragraph profiled the stages this milestone was already looking at, and missed the
 largest one.** The Dyson stage was never in it, and it was 35-46% of a run. The item below
-takes it to 17-27%, after which the correlated moment construction is the majority again
-and is the stage to profile next. Two lessons worth keeping, both in
+takes it to 22.8%, after which the correlated moment construction is the majority again.
+
+**Re-profiled after that landed** (benzene/cc-pVTZ, `nmom_max = 7`, production path, one
+process, 38.83 s total), which is what this milestone's acceptance gate asks for before
+optimising further:
+
+| stage | s | share |
+| --- | --- | --- |
+| moment construction (dd + se) | 20.58 | **53.0%** |
+| Dyson | 8.85 | 22.8% |
+| integrals | 6.84 | 17.6% |
+| static self-energy | 2.57 | 6.6% |
+
+and within the moment construction, by self time: `build_se_moments` 8.34 s (21.5% of the
+run), `convolve` 3.65 s (9.4%), `_hht_apply` 3.33 s (8.6%), `cho_solve` 1.41 s (3.6%), and
+a single `ascontiguousarray` at 1.28 s (3.3%) - the layout copy the batched loop pays for.
+
+**`convolve` is 9.4%, not the 1% recorded above.** The refactor item below was written
+against the old profile and is worth about nine times what its placement suggests; it and
+the `Lpx` layout item are now the two cheapest wins in this milestone. Two lessons worth
+keeping, both in
 [`DIAGONALISATION_ROADMAP.md`](DIAGONALISATION_ROADMAP.md): a stage absent from the profile
 is not a stage that is cheap, and the `O(N^3)`-versus-`O(N^4)` argument for ignoring the
 Dyson solve holds only for growing the molecule - at fixed molecule and growing basis
