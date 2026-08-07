@@ -73,7 +73,8 @@ reproduced 52/52 by `python -m baseline.check` at each quantity's own tolerance.
 ## Milestone 1 - Repair Dyson realization and error reporting
 
 **Status: Complete - 1.1 to 1.4 implemented in `mkakcl/dyson` and consumed here through the
-pin, which is now at `73cd18d`.**
+pin. The Milestone 1 work was accepted at `73cd18d`; the pin has since moved to `3ebd156`
+to carry Milestone 4 work, which changes nothing in this section.**
 
 Dyson is an external dependency, so these changes are made in `mkakcl/dyson`, tested there,
 and consumed here through an immutable commit. A private runtime patch in momentGW is not
@@ -86,9 +87,11 @@ commit on the fork that the baseline has been recorded against is the accepted s
 the milestone closes on it. Nothing here is a licence to push to `BoothGroup/dyson` - see
 [`CLAUDE.md`](CLAUDE.md).
 
-The baseline has been re-recorded against the pin twice: at `054d4b5`, where three cases
-began stepping down from the order they were asked for, and at `73cd18d`, which moved
-nothing at all. See [`baseline/README.md`](baseline/README.md).
+The baseline has been re-recorded against the pin three times: at `054d4b5`, where three
+cases began stepping down from the order they were asked for; at `73cd18d`, which moved
+nothing at all; and at `3ebd156`, which moved the frontier by 1e-15 to 2e-13 eV and
+improved the realization residuals by 4x to 26x, both by removing error rather than
+introducing it. See [`baseline/README.md`](baseline/README.md).
 
 ### 1.1 Reconstructed-moment diagnostic
 
@@ -142,7 +145,8 @@ nothing at all. See [`baseline/README.md`](baseline/README.md).
   `baseline/run.py` no longer rebuilds a second pair to read them off.
 - [x] Pin momentGW to the accepted Dyson commit: `mkakcl/dyson@73cd18d`. The fork is the
   accepted state, so this is the terminal pin rather than a placeholder for an upstream
-  one. Moving it re-recorded the baseline, which moved nothing: 52/52 unchanged.
+  one. Moving it re-recorded the baseline, which moved nothing: 52/52 unchanged. The pin is
+  now at `3ebd156` for the Milestone 4 work; it carries everything accepted here unchanged.
 
 Restricted molecular only. The unrestricted and periodic solvers share this kernel but
 override `solve_dyson` without gating it, and keep the unconditional flag until they do.
@@ -396,6 +400,15 @@ constant-factor and neither touching how a moment is defined: making HHT the def
 benzene/cc-pVDZ at `nmom_max = 3`, **1.51x** at `nmom_max = 7`, and **1.41x** on
 cc-pVTZ.
 
+**That paragraph profiled the stages this milestone was already looking at, and missed the
+largest one.** The Dyson stage was never in it, and it was 35-46% of a run. The item below
+takes it to 17-27%, after which the correlated moment construction is the majority again
+and is the stage to profile next. Two lessons worth keeping, both in
+[`DIAGONALISATION_ROADMAP.md`](DIAGONALISATION_ROADMAP.md): a stage absent from the profile
+is not a stage that is cheap, and the `O(N^3)`-versus-`O(N^4)` argument for ignoring the
+Dyson solve holds only for growing the molecule - at fixed molecule and growing basis
+`nocc` is constant, both scale as `O(N^3)`, and the Dyson share *rises* with basis size.
+
 Two measurements worth keeping, because they contradict assumptions written elsewhere in
 this roadmap:
 
@@ -423,6 +436,18 @@ this roadmap:
   `build_se_moments` - 0.06 GB on benzene/cc-pVDZ, 0.36 GB on cc-pVTZ. Emitting that
   layout from `Integrals.transform` would remove the copy entirely, but `Lpx` is shared
   with the unrestricted and periodic solvers and so is deferred to Milestone 6.
+- [x] Stop the Dyson stage doing its work twice. Profiling the *stage* rather than its
+  eigendecompositions put it at 35-46% of a run, and found two things: `Lehmann.moments`
+  contracted the poles with a three-operand `einsum` that `np.einsum` cannot route to a
+  `tensordot`, so it ran in the unblocked single-threaded kernel (46% of the stage, and
+  21-73x slower than the equivalent GEMMs); and `Spectral` diagonalised the supermatrix
+  eagerly, then reconstructed its blocks from that eigendecomposition to recover the static
+  part and self-energy it had been built from - a round trip returning its own inputs, 21
+  of the 51 eigendecompositions in a G0W0, including one of the two `9 * nmo` solves.
+  Delivered as `mkakcl/dyson#6`, pin moved to `3ebd156`. **2.97x on the Dyson stage and
+  1.45x on a benzene/cc-pVTZ calculation at `nmom_max = 7`**, with the frontier moving
+  1e-15 to 2e-13 eV and the realization residuals improving 4-26x. Full analysis, and what
+  is left, in [`DIAGONALISATION_ROADMAP.md`](DIAGONALISATION_ROADMAP.md).
 - [ ] Refactor convolution so moment orders accumulate locally and perform one final
   MPI reduction and symmetrization instead of reducing full stacks repeatedly.
 - [ ] Batch several HHT Gram reductions or overlap nonblocking reductions with local
@@ -518,8 +543,8 @@ This track runs alongside every milestone rather than at the end.
    residuals. Delivered as `mkakcl/dyson#1`.
 3. **Dyson support/PSD policy** - scale-aware matrix powers, rank reporting, and
    feasibility gates; update the momentGW pin. Delivered as `mkakcl/dyson#2` and `#3`,
-   with `#4` making the support policy statable from `dyson_opts`; the pin is at
-   `73cd18d`.
+   with `#4` making the support policy statable from `dyson_opts`; accepted at the pin
+   `73cd18d`, which has since moved on for Milestone 4.
 4. **HHT scalar layer** - stable coefficients, rigorous bounds, exact scalar error
    checks, and high-precision tests. Delivered together with 5 on the
    `m2-hht-eta0` branch.

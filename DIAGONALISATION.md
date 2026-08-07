@@ -1,5 +1,26 @@
 # Diagonalisation in the Dyson solve: what happens now, and what could replace it
 
+> **Superseded in part, 2026-08-06.** §6 and §7 are superseded by
+> [`DIAGONALISATION_ROADMAP.md`](DIAGONALISATION_ROADMAP.md). The measurements below
+> stand; the framing does not. Two things this document does not count are larger than
+> everything it does:
+>
+> - **`Lehmann.moments` (`lehmann.py:371`) is the biggest single item in the Dyson
+>   stage** — a three-operand `einsum` that never reaches BLAS, 46% of the stage at
+>   benzene/cc-pVTZ, and 20–70x too slow. It is not a diagonalisation.
+> - **21 of the 51 eigendecompositions in a G0W0 run are a round trip**: dyson
+>   diagonalises a supermatrix, then reconstructs and re-diagonalises its blocks to
+>   recover the inputs it was built from. The `9 * nmo` solve §3 measures at 12.15 s
+>   happens twice, once of them for nothing.
+>
+> Together they are **1.9x–2.75x on the Dyson stage and 1.24x–1.42x on the whole run**,
+> at no accuracy cost — more than this document's stated ceiling for its best option —
+> and they drop the ceiling on Options 1, 2 and 3 to **1.02x, 1.06x and 1.06x**.
+> §5.1's "eigendecomposition is 15.6% of a run" and its call count are both undercounts,
+> and the `O(N^3)`-vs-`O(N^4)` argument in §6 holds only for growing the molecule: with
+> basis-set extension `nocc` is fixed, both scale as `O(N^3)`, and the Dyson share rises.
+> Read the roadmap first.
+
 Written 2026-08-04. Nothing here has been implemented. Every number is measured on this
 machine (macOS, Accelerate, PySCF 2.14.0, `mgw-monomial`) at the pin `mkakcl/dyson@73cd18d`,
 with the benzene test systems used for the Milestone 4 profiling.

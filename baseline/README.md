@@ -219,13 +219,18 @@ stepping down fails the check rather than hiding inside a residual that got smal
 the same momentGW commit previously resolved to whatever Dyson's default branch happened to
 be that day, so no recorded result could name the code that produced it.
 
-The pin is currently `mkakcl/dyson@73cd18d`, which carries the Milestone 1 work that
-upstream master does not have: the corrected moment-error diagnostic (`mkakcl/dyson#1`),
-the scale-aware `matrix_power` support policy (`#2`), the feasibility validation and order
+The pin is currently `mkakcl/dyson@3ebd156`. It carries the Milestone 1 work that upstream
+master does not have: the corrected moment-error diagnostic (`mkakcl/dyson#1`), the
+scale-aware `matrix_power` support policy (`#2`), the feasibility validation and order
 step-down (`#3`) described above, and the tolerance option surface (`#4`) that lets
 `dyson_opts` state that support policy instead of inheriting it. Before `#1` the error
 comparison silently dropped the two newest moments and returned exactly zero at the first
 iteration.
+
+It also carries the Milestone 4 work: solving each iteration once (`#5`), and the moment
+contraction and deferred spectrum of `#6`, which together are 2.97x on the Dyson stage and
+1.45x on a benzene/cc-pVTZ calculation at `nmom_max = 7`. See
+[`DIAGONALISATION_ROADMAP.md`](../DIAGONALISATION_ROADMAP.md).
 
 Pinning by URL created a second problem, which `run.py` now handles: a dependency installed
 from `git+...@<sha>` unpacks into `site-packages` with no `.git` beside it, so the commit
@@ -263,3 +268,28 @@ neither is a change in the numbers:
   is measurable rather than assumed: re-running the check against these records, with the
   identical code that wrote them, reproduces 52/52 while still reporting HOMO shifts of up
   to 2.4e-14 eV and realization residuals that move by tens of percent.
+
+### What the move to `3ebd156` changed
+
+**52/52 unchanged**, and this time the movement is real rather than run-to-run: frontier QP
+energies shift by **1e-15 to 2e-13 eV**, and the realization residuals improve by **4x to
+26x** (`water_pbe_nmom7` hole 4.67e-14 to 1.98e-15; `ozone_pbe_nmom5` hole 6.33e-14 to
+2.43e-15). Both are understood, and both are the removal of error rather than the
+introduction of any:
+
+- The QP shift is `#6`'s deferred spectrum. The auxiliary energies and couplings are now
+  exactly what the recurrence produced, instead of what survived a round trip out through
+  an eigendecomposition of the supermatrix and back. The shift is five orders inside
+  `DETERMINISTIC` and, for the larger cases, an order above this machine's run-to-run
+  scatter, so it is attributable rather than noise.
+- The residual improvement is `#6` and the GEMM contraction of `#1` together: the
+  reconstructed moments the diagnostic compares are no longer computed through the same
+  round trip, and the contraction now sums in BLAS-3 blocked order.
+
+The run-to-run scatter itself was measured before the move, so that these could be told
+apart: four `baseline.check` runs on the unchanged tree gave 52/52 with almost every case
+bit-identical (`HOMO shift +0.000e+00 eV`), the only movement being 1e-14 eV on the four
+`hydrogen_pbe` cases. That is far tighter than the `DETERMINISTIC` floor of 1e-8 relative,
+whose docstring still attributes itself to a Clenshaw-Curtis grid-scale plateau that
+`eta0_method="hht"` removed as the default on 2026-08-04. The floor is now about six orders
+more generous than the path needs, and tightening it would catch more.

@@ -30,14 +30,18 @@ dependencies = [
     # Pinned to an immutable commit, not a branch. `@master` meant every install resolved to
     # whatever dyson's default branch happened to be that day, so two installs of the same
     # momentGW commit could differ in the Dyson solvers -- and no recorded result could name
-    # the code that produced it. `73cd18d` is the commit the baseline in `baseline/` is
+    # the code that produced it. `3ebd156` is the commit the baseline in `baseline/` is
     # recorded against. It carries the Milestone 1 work that upstream master does not have:
     # the corrected moment-error diagnostic (mkakcl/dyson#1), the scale-aware `matrix_power`
     # support policy (#2), the feasibility validation and order step-down (#3), and the
     # tolerance option surface that lets `dyson_opts` below state that support policy (#4).
+    # It also carries the Milestone 4 work: solving each iteration once (#5), and the
+    # moment contraction and deferred spectrum of #6, which together are 2.97x on the Dyson
+    # stage and 1.45x on a benzene/cc-pVTZ calculation at `nmom_max = 7`. See
+    # `DIAGONALISATION_ROADMAP.md`.
     # The fork is where this lands and stays -- acceptance is this pin, not an upstream
     # merge. Move it only deliberately, and re-record the baseline in the same commit.
-    "dyson @ git+https://github.com/mkakcl/dyson@73cd18d6f0426f238f8df3fd96807f41ea5daa53",
+    "dyson @ git+https://github.com/mkakcl/dyson@3ebd15690a6fb0ad034da185abaf2dfd22bdcfaf",
 ]
 dynamic = [
     "version",
