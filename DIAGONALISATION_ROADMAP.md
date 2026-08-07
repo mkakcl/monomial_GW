@@ -118,6 +118,50 @@ which is what makes the comparison usable despite §0's warning about cross-proc
 The `9 * nmo` solve now runs **once** (2811 ms) rather than twice (5717 ms), and the
 eigenvalues-only path for the log line costs 484 ms across two calls.
 
+### 0.6 The re-profile, after Tier 1
+
+Milestone 4's acceptance gate asks the benchmark to identify the new dominant stage before
+further optimisation. benzene / cc-pVTZ, `nmom_max = 7`, PBE, production streaming path,
+one process:
+
+| stage | s | % | was, before Tier 1 |
+| --- | --- | --- | --- |
+| **moment construction (dd + se)** | **20.58** | **53.0%** | 36% |
+| Dyson | 8.85 | 22.8% | **47.2%** |
+| integrals | 6.84 | 17.6% | 11% |
+| static self-energy | 2.57 | 6.6% | 4% |
+
+The Dyson stage is no longer dominant, and **the moment construction is the majority
+again**. Inside it, by self time:
+
+| | s | % of run | |
+| --- | --- | --- | --- |
+| `tda.py:275`, `build_se_moments` | 8.34 | 21.5% | the back half |
+| `tda.py:190`, `convolve` | 3.65 | 9.4% | 8 calls |
+| `rpa.py:93`, `_hht_apply` | 3.33 | 8.6% | the eta0 kernel |
+| `_cho_solve` | 1.41 | 3.6% | 23 calls, inside `_hht_apply` |
+| `numpy.ascontiguousarray` | 1.28 | 3.3% | **one call** |
+
+Three things worth acting on, and none of them is in this document's Tier 2:
+
+- **`convolve` is 9.4% of a run, not 1%.** `ROADMAP.md` Milestone 4 records it at 1% from
+  the pre-Tier-1 profile, and there is already an unchecked item against it — "refactor
+  convolution so moment orders accumulate locally and perform one final MPI reduction and
+  symmetrization instead of reducing full stacks repeatedly". That item is now worth about
+  nine times what its own milestone thinks.
+- **`ascontiguousarray`, 1.28 s in a single call**, is the layout copy that the batching
+  work in Milestone 4 pays for. The roadmap already names the fix — emit that layout from
+  `Integrals.transform` — and defers it to Milestone 6 because `Lpx` is shared with the
+  unrestricted and periodic solvers. It is 3.3% of a cc-pVTZ run.
+- **`build_se_moments` itself is 21.5%** and is the single largest item in the calculation.
+
+**And one correction to this document.** §2.1 sizes the recurrence at ~12% of a cc-pVTZ run.
+That was measured with the `Lehmann.moments` `einsum` still in place and wrongly attributed
+its cost to "the recurrence remainder". Measured now, the recurrence is `_dgemm` at
+**1.57 s, 4.0% of the run** — and `Lehmann.moments` is **0.165 s across 15 calls**, down
+from 5.94 s, which is §1.1 confirmed in situ at 36x. Tier 2.1 is worth a third of what §2.1
+claims.
+
 ---
 
 ## 1. Tier 1 — exact, no accuracy sacrificed
@@ -317,18 +361,22 @@ recording one such case so the change is judged against a number rather than a t
 
 Post-Tier-1 targets at benzene / cc-pVTZ, where the Dyson stage is 7.3 s of a ~31 s run.
 
-### 2.1 The recurrence — the new largest Dyson item
+### 2.1 The recurrence
 
-`_recurrence_iteration_hermitian` (`dyson/solvers/static/mblse.py:282`) is ~3.9 s, about
-**12% of the run** after Tier 1 and the biggest thing left in the stage. The block
-recursion is `O(max_cycle^2 * nmom)` products of `nphys x nphys` blocks, issued one at a
-time: the profile shows 54 `_dgemm` calls and 158 `ndarray.dot` calls, none of them
-large. This is the same shape as the Milestone 4 external-orbital loop, which went from
-701 ms to 245 ms by batching and reordering for contiguity.
+~~the new largest Dyson item~~ — **measured, and a third of what this section first
+claimed.** `_recurrence_iteration_hermitian` (`dyson/solvers/static/mblse.py:282`) issues
+its block products through `_dgemm`: **1.57 s across 54 calls, 4.0% of a cc-pVTZ run**
+(§0.6). The earlier "~3.9 s, about 12%" was measured with the `Lehmann.moments` `einsum`
+still in place and attributed its cost here by mistake.
 
-**Unmeasured**, and the obvious next thing to measure. Batching the recursion's products
-into larger GEMMs is exact up to summation order. Start by profiling which of the ten
-terms in the diagonal recursion dominate before restructuring anything.
+The block recursion is `O(max_cycle^2 * nmom)` products of `nphys x nphys` blocks issued
+one at a time, which is the same shape as the Milestone 4 external-orbital loop that went
+from 701 ms to 245 ms by batching and reordering for contiguity. If it batched as well as
+that one did, it would return ~3% of a run.
+
+**Verdict: below the line.** §0.6 has three items worth more, all of them in the moment
+construction, and two already have unchecked entries in `ROADMAP.md` Milestone 4. Do those
+first; come back to this only if the Dyson stage matters again.
 
 ### 2.2 The one remaining arrowhead solve — `DIAGONALISATION.md` Options 1, 2, 3
 
@@ -486,13 +534,26 @@ holds at ~1e-13 eV.
 3. ~~**§2.3's cheapest first step — report the unplaceable poles.**~~ **Done** —
    `mkakcl/dyson#7`. It answered the question it was meant to answer, in the negative: the
    G0W0 path has no such poles, so §2.3 is a dyson-suite problem rather than a momentGW one.
-4. **Re-profile.** Milestone 4's acceptance gate requires identifying the new dominant
-   stage; after Tier 1 the Dyson stage is 17–27% of a run and the correlated moment
-   construction is the majority again. **This is the next step.**
-5. **Measure Tier 2.1**, the recurrence — the largest remaining Dyson item and the only
-   one whose size is not yet known.
-6. **Close Options 1, 2 and 3** in `DIAGONALISATION.md` with the ceilings in §2.2.
-7. **Tier 3 last**, after Milestone 3, gated and opt-in.
+4. ~~**Re-profile.**~~ **Done** — §0.6. The moment construction is the majority again at
+   53%, the Dyson stage is 22.8%, and Tier 2.1 turned out to be a third of the size this
+   document claimed.
+5. ~~**Measure Tier 2.1.**~~ **Done, and it fell below the line** — 4.0% of a run (§2.1).
+
+**The work now leaves this document.** §0.6 puts the three largest remaining items in the
+moment construction, and two of them already have unchecked entries in `ROADMAP.md`
+Milestone 4:
+
+6. **`convolve`** — 9.4% of a run, against the 1% its own milestone records. The refactor
+   is already specified there; only its priority was wrong.
+7. **`build_se_moments`** — 21.5%, the single largest item in the calculation, and the
+   stage Milestone 4 has already optimised once.
+8. **The `ascontiguousarray` layout copy** — 3.3%, fix already named (emit the layout from
+   `Integrals.transform`), currently deferred to Milestone 6 because `Lpx` is shared.
+
+Remaining in this document, both low priority:
+
+9. **Close Options 1, 2 and 3** in `DIAGONALISATION.md` with the ceilings in §2.2.
+10. **Tier 3 last**, after Milestone 3, gated and opt-in.
 
 ## 5. What has not been checked
 
