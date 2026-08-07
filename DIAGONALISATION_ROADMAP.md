@@ -356,8 +356,13 @@ the null vector of an `nphys x nphys` Schur complement, so `eigvalsh` plus an
 ### 2.3 Poles the realization cannot place
 
 **Not a performance item.** It came out of verifying §1.1 and is recorded here because
-this is where the evidence is. It belongs to Milestone 3, and it is worth more than
-anything else in this document.
+this is where the evidence is; it belongs to Milestone 3.
+
+**Status: reported, and smaller than it first looked.** `mkakcl/dyson#7` implements the
+reporting step, and the measurement it enabled shows the fault does not occur on the
+restricted molecular G0W0 path at all. An earlier revision of this section called it "worth
+more than anything else in this document" — that was written before it could be measured,
+and it was wrong. It matters to dyson's own test suite, not to a momentGW calculation.
 
 **What was found.** The MBLSE realization emits poles whose couplings are at the level of
 roundoff — norms ~1e-10, weights ~1e-20 — sitting at the eigenvalues of a numerically null
@@ -387,7 +392,27 @@ scale, rank loss, and effect on reconstructed moments."* These directions are no
 discarded — they are **kept and given an arbitrary energy**, which is worse, and unreported.
 Milestone 3.3's step-down gate and 3.4's deep-state validation are the right home.
 
-It is also a plausible mechanism for something `ROADMAP.md` Milestone 4 already records:
+**Measured, 2026-08-07 — and it does not occur on the G0W0 path.** The reporting step below
+is implemented (`mkakcl/dyson#7`), and pointing it at the restricted molecular path finds
+nothing:
+
+| system | `nmom_max` | weightless poles |
+| --- | --- | --- |
+| water / cc-pVDZ and cc-pVTZ | 3, 7 | **none** |
+| ozone (the small-gap case) | 1, 3, 7 | **none** |
+| lithium-hydride | 1, 3, 7 | **none** |
+| H2 | 1, 3, 7 | 1 of 10, 11 of 20, **31 of 40**, hole sector only |
+
+H2 is the expected answer rather than a fault: with one occupied orbital the hole moments
+are rank-deficient by construction and cannot support the poles the recurrence emits. Their
+worst contribution to a conserved moment is 2.74e-15.
+
+So the fault is real, and it is confined to dyson's CCSD/FCI fixtures — where it makes
+several tests coin flips, and where it forced the tolerance widening below — plus H2's hole
+sector, where it is harmless. **This retires the speculation in the next paragraph**, which
+is kept because the reasoning was worth recording and the answer was not obvious:
+
+It was also a plausible mechanism for something `ROADMAP.md` Milestone 4 already records:
 deep quasiparticle states moving by 5.2e-8 eV at `nmom_max = 7` under a pure reassociation
 of BLAS calls, while the HOMO holds at ~1e-13 eV. **Not established** — that was measured
 in momentGW's G0W0 path and this in dyson's MBLSE fixtures. Connecting the two is a
@@ -408,11 +433,21 @@ concrete piece of Milestone 3.1's error budget and worth doing before anything e
    Milestone 1.3 machinery already does this for other failures — or report it, rather than
    emit a pole and let an eigendecomposition of a null block decide where it lands.
 
-**Cheapest useful first step**, short of any of that: *report* them. Count the poles below
-a scale-aware weight threshold, their energy spread, and their contribution to each
-delivered moment, and put it on the solver diagnostics. That is a diagnostic, not a change
-of numerics, so it needs no baseline re-record, and it would say how much of the deep-state
-irreproducibility this accounts for.
+~~**Cheapest useful first step**, short of any of that: *report* them.~~ **Done** —
+`mkakcl/dyson#7`. `Lehmann.weightless_poles` counts them against a scale-aware threshold
+(`atol + rtol * max |w|`, following `matrix_power`'s policy rather than a fixed cutoff) and
+measures what they put into each conserved moment relative to the moment itself; that ratio
+is the one that grows like `e**n` and says whether their placement matters yet.
+`BaseMBL.weightless_poles` exposes it for the realized representation, and `__post_kernel__`
+reports a count, an energy spread and the worst contribution when any are found. Diagnostic
+only, no numerics change, so it needs no baseline re-record and no pin move of its own —
+momentGW picks it up whenever the pin next moves.
+
+**What remains** is the part that needs Milestone 3.1's error budget: telling "at the
+roundoff floor" from "small but real", and then either stepping the order down or reporting
+the rank deficiency where it arises. That is worth doing for dyson's own sake — it would
+retire the test debt below and the suite non-determinism in §5 — but on the evidence above
+it buys a momentGW calculation nothing.
 
 **Test debt taken in the meantime.** `test_vs_exact_solver_central[h2o-sto3g-CCSD-3]` was
 passing at 1e-8 by luck: it compares moments of a representation containing these poles, so
@@ -443,18 +478,17 @@ holds at ~1e-13 eV.
 
 ## 4. Ordering
 
-1. ~~**Tier 1.1, 1.2 and 1.3.**~~ **Done** on branch `m4-lehmann-moments-gemm`; 1.1 is
-   committed as `a1569d9`, 1.2 and 1.3 are uncommitted. Measured **2.97x on the Dyson
-   stage and 1.45x on the run** (§0.5).
-2. **Check `baseline.check` is reproducible** (§5) — it is the gate everything below rests
-   on, and the dyson suite demonstrably is not. Then **§1.4**: pin bump, `baseline.check`,
-   deliberate re-record, `ROADMAP.md` §1.4 and `baseline/README.md`.
-3. **§2.3's cheapest first step — report the unplaceable poles.** Ahead of the rest of
-   Tier 2 because it is a diagnostic, needs no re-record, and answers whether §2.3 is the
-   mechanism behind Milestone 4's 5.2e-8 eV deep-state movement.
+1. ~~**Tier 1.1, 1.2 and 1.3.**~~ **Done** — `mkakcl/dyson#6`. Measured **2.97x on the
+   Dyson stage and 1.45x on the run** (§0.5).
+2. ~~**Check `baseline.check` is reproducible**, then **§1.4**.~~ **Done.** The gate is
+   sound and sharper than its docstring claims (§5); the pin is at `3ebd156`, the baseline
+   is re-recorded at 52/52, and `ROADMAP.md` and `baseline/README.md` name it.
+3. ~~**§2.3's cheapest first step — report the unplaceable poles.**~~ **Done** —
+   `mkakcl/dyson#7`. It answered the question it was meant to answer, in the negative: the
+   G0W0 path has no such poles, so §2.3 is a dyson-suite problem rather than a momentGW one.
 4. **Re-profile.** Milestone 4's acceptance gate requires identifying the new dominant
    stage; after Tier 1 the Dyson stage is 17–27% of a run and the correlated moment
-   construction is the majority again.
+   construction is the majority again. **This is the next step.**
 5. **Measure Tier 2.1**, the recurrence — the largest remaining Dyson item and the only
    one whose size is not yet known.
 6. **Close Options 1, 2 and 3** in `DIAGONALISATION.md` with the ceilings in §2.2.
