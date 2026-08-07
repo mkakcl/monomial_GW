@@ -217,6 +217,17 @@ class Test_GW(unittest.TestCase):
         ea = 0.006558884450397966
         self._test_regression("hf", dict(fock_loop=True), 1, ip, ea, "fock loop")
 
+    def test_regression_fock_loop_nmom3(self):
+        # Dyson's `Spectral` is shared with the Fock loop, which the recorded baseline
+        # never exercises: `baseline/run.py` stores `fock_loop` as provenance but does not
+        # vary it. `test_regression_fock_loop` above covers `nmom_max = 1`, where the
+        # upfolded supermatrix is only `3 * nmo` and each sector contributes one block;
+        # this covers an order where it is `5 * nmo` and the self-energy is built by
+        # combining two sectors, which is the path a change to `Spectral` would move.
+        ip = -0.280154354540313
+        ea = 0.006296394214700909
+        self._test_regression("hf", dict(fock_loop=True), 3, ip, ea, "fock loop, nmom_max=3")
+
     def test_diagonal_pbe0(self):
         ip = -0.26182940618925504
         ea = 0.008140559373415861

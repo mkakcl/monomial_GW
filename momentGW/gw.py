@@ -71,7 +71,9 @@ def realization_record(solver, se_moments):
         "order_reduced": int(achieved) != int(solver.max_cycle),
         "nmom_conserved_requested": int(solver.nmom_conserved(solver.max_cycle)),
         "nmom_conserved_achieved": int(solver.nmom_conserved(achieved)),
-        "n_poles": int(np.asarray(solver.result.eigvals).size),
+        # `neig` rather than `eigvals.size`: this is a shape, and reading it off the
+        # eigenvalues would force the solver's result to diagonalise its supermatrix.
+        "n_poles": int(solver.result.neig),
         "errors": solver.moment_errors() if solver.calculate_errors else None,
     }
 

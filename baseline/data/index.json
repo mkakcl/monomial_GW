@@ -226,31 +226,31 @@
   },
   "code": {
    "baseline_script": {
-    "branch": "m4-tda-rpa",
-    "commit": "59a71f2a45e0e253bace953b95efe8a6b1271c5b",
+    "branch": "master",
+    "commit": "105a62ddcfd34b61201c3e8cfdeb55921b010608",
     "dirty": true,
-    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m4-tda-rpa/baseline"
+    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/baseline"
    },
    "dyson": {
     "branch": null,
-    "commit": "73cd18d6f0426f238f8df3fd96807f41ea5daa53",
+    "commit": "3ebd15690a6fb0ad034da185abaf2dfd22bdcfaf",
     "dirty": false,
     "path": "/Users/marcusallen/miniconda3/envs/mgw-monomial/lib/python3.11/site-packages/dyson/__init__.py",
-    "requested_revision": "73cd18d6f0426f238f8df3fd96807f41ea5daa53",
+    "requested_revision": "3ebd15690a6fb0ad034da185abaf2dfd22bdcfaf",
     "source": "pip direct_url",
     "url": "https://github.com/mkakcl/dyson",
     "version": "1.0.0"
    },
    "momentGW": {
-    "branch": "m4-tda-rpa",
-    "commit": "59a71f2a45e0e253bace953b95efe8a6b1271c5b",
+    "branch": "master",
+    "commit": "105a62ddcfd34b61201c3e8cfdeb55921b010608",
     "dirty": true,
-    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/.claude/worktrees/m4-tda-rpa/momentGW/__init__.py",
+    "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/momentGW/__init__.py",
     "version": "1.0.0"
    }
   },
   "host": {
-   "conda_env": null,
+   "conda_env": "base",
    "cpu_count": 12,
    "machine": "x86_64",
    "platform": "macOS-15.7.7-x86_64-i386-64bit",
@@ -260,7 +260,7 @@
     "OPENBLAS_NUM_THREADS": null
    }
   },
-  "recorded_utc": "2026-08-04T01:56:17Z",
+  "recorded_utc": "2026-08-07T03:05:59Z",
   "versions": {
    "numpy": "2.3.5",
    "pyscf": "2.14.0",
