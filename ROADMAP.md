@@ -353,14 +353,46 @@ formed; no particle-hole squared matrix is allowed.
 - [ ] Transform raw monomial moments to the scaled basis before realization and
   transform poles back afterward.
 - [ ] Evaluate a direct Chebyshev/modified-moment plus block-Jacobi backend for orders
-  where raw monomial Hankel matrices lose usable precision.
+  where raw monomial Hankel matrices lose usable precision. **Premise unmeasured on this
+  path** (2026-08-10): no such order was found up to `nmom_max = 15`, from H2 to
+  benzene/cc-pVTZ, with residuals at 5-8e-15 throughout and every step-down rank-limited.
+  MBLSE runs a block Lanczos recurrence and never forms a raw monomial Hankel matrix, which
+  is likely why; `mkakcl/chebyshev-gw`, which Cholesky-factorises a Gram, is arith-limited
+  at 13-27 depending on the system. Independent cross-check: lithium-hydride rank-limits at
+  5-6 conserved orders in both codes, so that limit is the molecule rather than the moment
+  basis. Do not build this until a system is found where the residual actually degrades;
+  if one is, the source-agnostic `realization/` package in that repo is the thing to reuse,
+  behind an option with monomial remaining the default.
 - [ ] Keep the raw monomial backend as an oracle at low order during migration.
 
 ### 3.3 Adaptive moment order
 
-- [ ] Increase only through supported odd orders and compare `m` with `m + 2`.
-- [ ] Converge requested frontier QP energies, reconstructed moments, particle number,
-  and positive spectral weight.
+**Why this is now first rather than third.** Measured 2026-08-10 on benzene/cc-pVTZ, raw
+monomial, `nmom_max` swept 1 to 15 from one moment build: the realization shows **no
+arithmetic ceiling** - the reconstructed-moment residual sits at 5-8e-15 at every order and
+the single step-down at 15 is rank-limited - while the **frontier is nowhere near
+converged**. The LUMO is still moving 41 meV at `nmom_max = 15` and 159 meV at 7; the HOMO
+21 meV at 7. Quasiparticle weight drifts steadily with order too, 0.953 to 0.845. There is
+no level crossing behind any of it: the dominant orbital is unchanged throughout.
+
+Truncation is therefore the largest term in the error budget by nine orders of magnitude -
+tens of meV against the ~1e-11 eV that every numerical effect in Milestones 1, 2 and 4
+moves - and nothing reported it. That also removes the premise for 3.2 on this path; see
+below.
+
+- [x] Compare `m` with `m - 2` and report the frontier movement. `moment_order_convergence`
+  (default `False`) realizes the self-energy at `nmom_max - 2` as well and records both
+  frontiers, the shift, and the dominant reference orbital of each so a level crossing is
+  visible rather than read as a large shift. Cheap because the moments in hand contain
+  every lower order exactly - truncating to `nmom_max - 1` entries is identical to having
+  built at `nmom_max - 2`, verified against two independent calculations - so it costs a
+  realization and a Dyson solve, not a second moment construction: **1% on benzene/cc-pVTZ
+  at `nmom_max = 7`**. Off by default because it is a second solve; at 1% it is a candidate
+  for on by default, which the "trustworthy calculation" definition below already asks for.
+- [ ] Increase automatically through supported odd orders until the frontier stops moving,
+  rather than only reporting the last step.
+- [ ] Converge reconstructed moments, particle number, and positive spectral weight
+  alongside the frontier.
 - [ ] Step down automatically when the next block fails the delivered-moment or PSD
   gate.
 - [ ] Report requested, built, conserved, and realized orders separately.

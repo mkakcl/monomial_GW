@@ -38,6 +38,50 @@ def nelec_tolerance(gw, fock_loop):
     return 1e-1
 
 
+#: Weight below which a multiplet is a satellite rather than a quasiparticle. A
+#: moment-truncated spectrum carries a forest of low-weight poles between the HOMO and the
+#: true LUMO, and a permissive threshold picks one of them as the frontier.
+PHYSICAL_WEIGHT_MIN = 0.1
+
+
+def frontier_readout(gf, weight=PHYSICAL_WEIGHT_MIN):
+    """Read the frontier quasiparticle energies out of a correlated spectrum.
+
+    Parameters
+    ----------
+    gf : dyson.Lehmann
+        Correlated Green's function.
+    weight : float, optional
+        Minimum physical weight for a pole to count as a quasiparticle rather
+        than a satellite. Default value is `PHYSICAL_WEIGHT_MIN`.
+
+    Returns
+    -------
+    readout : dict
+        `homo` and `lumo` energies in Hartree, each with the reference orbital
+        carrying most of its weight. Missing where a sector has no pole above
+        the weight threshold.
+
+    Notes
+    -----
+    The dominant orbital is recorded beside each energy so that a level crossing
+    between two calculations is visible rather than silent: comparing energies
+    alone would report a crossing as a large shift.
+    """
+    physical = gf.physical(weight=weight)
+    readout = {}
+    for name, sector, index in (
+        ("homo", physical.occupied(), -1),
+        ("lumo", physical.virtual(), 0),
+    ):
+        if not sector.naux:
+            continue
+        couplings = sector.couplings[..., index]
+        readout[name] = float(np.real(sector.energies[index]))
+        readout[f"{name}_orbital"] = int(np.argmax(np.abs(couplings)))
+    return readout
+
+
 def realization_record(solver, se_moments):
     """Summarise what a Dyson solver realized, as distinct from what it was asked for.
 
@@ -379,6 +423,113 @@ class GW(BaseGW):
 
         return integrals
 
+    def _realize_frontier(self, se_moments_hole, se_moments_part, se_static):
+        """Realize a moment set and read its frontier, without self-consistency.
+
+        Used only by the moment-order convergence estimate, which needs two orders
+        treated identically; the diagnostics are switched off because the frontier does
+        not depend on them and they are the expensive part of a realization.
+
+        Parameters
+        ----------
+        se_moments_hole, se_moments_part : numpy.ndarray
+            Moments of the hole and particle self-energy.
+        se_static : numpy.ndarray
+            Static part of the self-energy.
+
+        Returns
+        -------
+        readout : dict
+            As `frontier_readout`, plus the order the recurrence conserved.
+        """
+        opts = dict(self.dyson_opts)
+        opts["calculate_errors"] = False
+
+        solvers = []
+        for moments in (se_moments_hole, se_moments_part):
+            solver = MBLSE(se_static, np.array(moments), **opts)
+            solver.kernel()
+            solvers.append(solver)
+
+        se = Spectral.combine_for_self_energy(*(s.result for s in solvers)).get_self_energy()
+        gf, _ = FockLoop(self, se=se, **self.fock_opts).solve_dyson(se_static, se=se)
+
+        readout = frontier_readout(gf)
+        readout["nmom_conserved"] = min(
+            solver.nmom_conserved(
+                solver.max_cycle if solver.max_cycle_achieved is None else solver.max_cycle_achieved
+            )
+            for solver in solvers
+        )
+        return readout
+
+    def moment_order_convergence_estimate(self, se_moments_hole, se_moments_part, se_static, gf):
+        """Estimate how much of the frontier is still moving with the moment order.
+
+        The truncation error is the one contribution to a moment-constrained result that
+        nothing else reports, and on benzene/cc-pVTZ it is the largest by a wide margin:
+        the LUMO is still moving tens of meV at `nmom_max = 15` while every numerical
+        effect in the calculation sits below 1e-10 eV. This compares the requested order
+        against `nmom_max - 2` and reports the difference.
+
+        It is cheap because the moments already in hand contain every lower order exactly:
+        truncating them to `nmom_max - 1` entries is identical to having built them at
+        `nmom_max - 2`, so this costs a realization and a Dyson solve, not a second moment
+        construction.
+
+        Parameters
+        ----------
+        se_moments_hole, se_moments_part : numpy.ndarray
+            Moments of the hole and particle self-energy.
+        se_static : numpy.ndarray
+            Static part of the self-energy.
+        gf : dyson.Lehmann
+            Green's function from the requested order.
+
+        Returns
+        -------
+        record : dict or None
+            The two frontiers and the shift between them, or `None` where no lower
+            order exists to compare against.
+
+        Notes
+        -----
+        The comparison is made without self-consistency at both orders, so that it
+        measures truncation alone. Where `fock_loop` or `optimise_chempot` is on, the
+        requested order is therefore re-solved without them rather than read off `gf`,
+        and `self_consistent_excluded` records that the estimate is not the shift in the
+        number the calculation reports.
+        """
+        nmom_max = np.asarray(se_moments_hole).shape[0] - 1
+        if nmom_max < 2:
+            return None
+
+        excluded = bool(self.fock_loop or self.optimise_chempot)
+        if excluded:
+            current = self._realize_frontier(se_moments_hole, se_moments_part, se_static)
+        else:
+            current = frontier_readout(gf)
+            current["nmom_conserved"] = None
+
+        lower = self._realize_frontier(
+            se_moments_hole[: nmom_max - 1], se_moments_part[: nmom_max - 1], se_static
+        )
+
+        record = {
+            "nmom_max": int(nmom_max),
+            "nmom_max_compared": int(nmom_max - 2),
+            "self_consistent_excluded": excluded,
+            "frontier": current,
+            "frontier_compared": lower,
+        }
+        for name in ("homo", "lumo"):
+            if name in current and name in lower:
+                record[f"{name}_shift"] = float(current[name] - lower[name])
+                record[f"{name}_orbital_changed"] = bool(
+                    current.get(f"{name}_orbital") != lower.get(f"{name}_orbital")
+                )
+        return record
+
     def solve_dyson(self, se_moments_hole, se_moments_part, se_static, integrals=None):
         """Solve the Dyson equation due to a self-energy resulting from a list of hole and particle
         moments, along with a static contribution.
@@ -483,6 +634,39 @@ class GW(BaseGW):
         logging.write(f"Error in number of electrons:  [{style}]{error:.3e}[/]")
         logging.write(f"Chemical potential:  {gf.chempot:.6f}")
 
+        # Estimate what the moment truncation is still costing. Reported rather than
+        # gated: it is a property of the requested order, not a failure.
+        convergence = None
+        if self.moment_order_convergence:
+            with logging.with_modifiers(
+                status="Estimating moment-order convergence", timer="Moment-order convergence"
+            ):
+                convergence = self.moment_order_convergence_estimate(
+                    se_moments_hole, se_moments_part, se_static, gf
+                )
+            if convergence is None:
+                logging.write("Moment-order convergence:  no lower order to compare against")
+            else:
+                parts = []
+                for name in ("homo", "lumo"):
+                    shift = convergence.get(f"{name}_shift")
+                    if shift is None:
+                        continue
+                    ev = abs(shift) * 27.211386245988
+                    crossed = (
+                        " [red](orbital changed)[/]"
+                        if convergence[f"{name}_orbital_changed"]
+                        else ""
+                    )
+                    parts.append(
+                        f"{name.upper()} [{logging.rate(ev, 1e-3, 1e-1)}]{ev:.3e}[/] eV{crossed}"
+                    )
+                logging.write(
+                    f"Moment-order convergence:  {' , '.join(parts)} "
+                    f"(nmom_max {convergence['nmom_max']} against "
+                    f"{convergence['nmom_max_compared']})"
+                )
+
         # Record the gates the calculation is judged against, so that the caller can
         # ask whether it converged instead of assuming that it did
         gates = {
@@ -499,6 +683,7 @@ class GW(BaseGW):
             "chempot": float(gf.chempot),
             "gates": gates,
             "converged": all(gates.values()),
+            "moment_order_convergence": convergence,
         }
 
         return gf, se
