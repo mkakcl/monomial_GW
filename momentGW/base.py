@@ -376,6 +376,15 @@ class BaseGW(Base):
         The moments already built contain every lower order exactly, so this
         costs a realization and a Dyson solve rather than a second moment
         construction. Default value is `False`.
+    nmom_max_tol : float, optional
+        If set, treat `nmom_max` as a cap rather than a request: realize at
+        increasing odd orders and stop at the first whose frontier sits within
+        this tolerance, in Hartree, of the order below it. The moments are
+        built once at the cap and every lower order is read out of them, so
+        this costs no extra moment construction and stopping early skips the
+        expensive high-order solves. If the cap is reached without meeting the
+        tolerance the calculation reports it as unconverged. `None` uses
+        `nmom_max` exactly as given. Default value is `None`.
     eta0_check_refinement : bool, optional
         If `True`, repeat the `"hht"` zeroth moment with four more poles
         and record the difference as a secondary regression signal. Not
@@ -425,6 +434,7 @@ class BaseGW(Base):
         eta0_n_poles=None,
         eta0_check_refinement=False,
         moment_order_convergence=False,
+        nmom_max_tol=None,
         optimise_chempot=False,
         fock_loop=False,
         fock_opts=OrderedDict(

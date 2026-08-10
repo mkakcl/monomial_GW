@@ -274,6 +274,58 @@ class Test_GW(unittest.TestCase):
         on.kernel(3)
         np.testing.assert_allclose(on.qp_energy, off.qp_energy, rtol=0, atol=0)
 
+    def test_nmom_max_tol_off_by_default(self):
+        """Without a tolerance, `nmom_max` means exactly what it always meant."""
+        gw = GW(self.mf)
+        gw.kernel(5)
+        self.assertIsNone(gw.dyson_diagnostics["moment_order"])
+        self.assertNotIn("moment_order", gw.dyson_diagnostics["gates"])
+
+    def test_nmom_max_tol_stops_early_and_matches_that_order(self):
+        """A loose tolerance stops below the cap, and gives that order's answer.
+
+        The point of reusing the moments is that a truncated set is the same as one
+        built at the lower order, so the adaptive result must match a plain run at the
+        order it settled on. They agree to roundoff rather than bit-for-bit: `convolve`
+        contracts every output order in one GEMM, whose row count depends on `nmom_max`,
+        so the two builds sum in a slightly different order.
+        """
+        gw = GW(self.mf, nmom_max_tol=1e-1)
+        gw.kernel(7)
+        record = gw.dyson_diagnostics["moment_order"]
+
+        self.assertTrue(record["converged"])
+        self.assertLess(record["order"], 7)
+        self.assertEqual(record["cap"], 7)
+        self.assertTrue(gw.dyson_diagnostics["gates"]["moment_order"])
+
+        plain = GW(self.mf)
+        plain.kernel(record["order"])
+        np.testing.assert_allclose(gw.qp_energy, plain.qp_energy, rtol=0, atol=1e-11)
+
+    def test_nmom_max_tol_needs_two_consecutive_orders(self):
+        """One small shift is not convergence; the shift is not monotonic in the order."""
+        gw = GW(self.mf, nmom_max_tol=1e-1)
+        gw.kernel(7)
+        record = gw.dyson_diagnostics["moment_order"]
+
+        settled = [x for x in record["shifts"] if x is not None][-2:]
+        self.assertEqual(len(settled), 2)
+        for shift in settled:
+            self.assertLess(shift, record["tol"])
+
+    def test_nmom_max_tol_unmet_is_reported_as_unconverged(self):
+        """Reaching the cap without meeting the tolerance fails the gate."""
+        gw = GW(self.mf, nmom_max_tol=1e-12)
+        gw.kernel(5)
+        record = gw.dyson_diagnostics["moment_order"]
+
+        self.assertFalse(record["converged"])
+        self.assertEqual(record["order"], 5)
+        self.assertFalse(gw.dyson_diagnostics["gates"]["moment_order"])
+        self.assertFalse(gw.dyson_diagnostics["converged"])
+        self.assertFalse(gw.converged)
+
     def test_regression_fock_loop_nmom3(self):
         # Dyson's `Spectral` is shared with the Fock loop, which the recorded baseline
         # never exercises: `baseline/run.py` stores `fock_loop` as provenance but does not

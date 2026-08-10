@@ -389,8 +389,18 @@ below.
   realization and a Dyson solve, not a second moment construction: **1% on benzene/cc-pVTZ
   at `nmom_max = 7`**. Off by default because it is a second solve; at 1% it is a candidate
   for on by default, which the "trustworthy calculation" definition below already asks for.
-- [ ] Increase automatically through supported odd orders until the frontier stops moving,
-  rather than only reporting the last step.
+- [x] Increase automatically through supported odd orders until the frontier stops moving.
+  `nmom_max_tol` (default `None`) turns `nmom_max` into a cap: the walk realizes at
+  1, 3, 5, ... and stops at the first order where the frontier has settled, then runs the
+  ordinary path at that order. No second moment construction - the build at the cap
+  contains every lower order - and stopping early *skips* the expensive high-order solves,
+  so it can cost less than the plain run it replaces. Reaching the cap without meeting the
+  tolerance is reported as unconverged and fails a `moment_order` gate, so the calculation
+  says so rather than returning a number that looks finished.
+  **Two consecutive orders must qualify, not one.** The shift is not monotonic in the
+  order - on water/cc-pVDZ it runs 0.464, 0.382, 0.070, 0.096, 0.016, 0.042 eV - and a
+  single-shift rule stops at order 11 for a 1e-3 Ha tolerance, immediately after which the
+  frontier moves another 42 meV.
 - [ ] Converge reconstructed moments, particle number, and positive spectral weight
   alongside the frontier.
 - [ ] Step down automatically when the next block fails the delivered-moment or PSD
