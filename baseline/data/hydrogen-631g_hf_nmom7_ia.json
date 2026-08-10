@@ -10,8 +10,8 @@
  "cpu_count": 12,
  "dd_moments": {
   "frobenius": [
-   0.4824085929455568,
-   0.9010887476267033,
+   0.4824085929455569,
+   0.9010887476267032,
    1.8730075263393846,
    4.079485895854283,
    9.073832744118553,
@@ -87,9 +87,9 @@
   "se_n_poles": 28
  },
  "load_average": [
-  3.19,
-  5.26,
-  5.89
+  6.71,
+  8.04,
+  6.77
  ],
  "mean_field": {
   "auxbasis": null,
@@ -102,7 +102,7 @@
   "nelectron": 2,
   "nmo": 4,
   "nocc": 1,
-  "scf_wall_seconds": 0.045,
+  "scf_wall_seconds": 0.069,
   "xc": "hf"
  },
  "moment_error": {
@@ -129,7 +129,7 @@
   "optimise_chempot": false,
   "polarizability": "drpa"
  },
- "peak_memory_gb": 0.2153,
+ "peak_memory_gb": 0.2138,
  "provenance": {
   "blas": {
    "blas": {
@@ -146,7 +146,7 @@
   "code": {
    "baseline_script": {
     "branch": "m4-convolve-gemm",
-    "commit": "7b7f280e0dcd3cd21e5c37a70d636592ae3caeb5",
+    "commit": "68779b1ad78147da4d4c9eb3a2ca0aa1fe0d3657",
     "dirty": true,
     "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/baseline"
    },
@@ -162,7 +162,7 @@
    },
    "momentGW": {
     "branch": "m4-convolve-gemm",
-    "commit": "7b7f280e0dcd3cd21e5c37a70d636592ae3caeb5",
+    "commit": "68779b1ad78147da4d4c9eb3a2ca0aa1fe0d3657",
     "dirty": true,
     "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/momentGW/__init__.py",
     "version": "1.0.0"
@@ -179,7 +179,7 @@
     "OPENBLAS_NUM_THREADS": null
    }
   },
-  "recorded_utc": "2026-08-10T14:40:20Z",
+  "recorded_utc": "2026-08-10T16:01:32Z",
   "versions": {
    "numpy": "2.3.5",
    "pyscf": "2.14.0",
@@ -551,15 +551,15 @@
   "source": "repository README worked example (not a GW100 geometry)"
  },
  "timings_seconds": {
-  "dd_moments": 0.0001,
-  "dyson": 0.0324,
-  "eta0": 0.0112,
+  "dd_moments": 0.0002,
+  "dyson": 0.0511,
+  "eta0": 0.0175,
   "eta0_oracle": 0.0001,
-  "integrals": 0.0006,
-  "realization_diagnostics": 0.0002,
-  "se_moments_from_dd": 0.0018,
-  "se_moments_streaming": 0.0093,
-  "se_static": 0.0002,
-  "total": 0.0573
+  "integrals": 0.0009,
+  "realization_diagnostics": 0.0005,
+  "se_moments_from_dd": 0.0026,
+  "se_moments_streaming": 0.0133,
+  "se_static": 0.0003,
+  "total": 0.0886
  }
 }

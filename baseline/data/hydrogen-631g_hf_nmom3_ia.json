@@ -75,9 +75,9 @@
   "se_n_poles": 16
  },
  "load_average": [
-  3.19,
-  5.26,
-  5.89
+  6.71,
+  8.04,
+  6.77
  ],
  "mean_field": {
   "auxbasis": null,
@@ -90,7 +90,7 @@
   "nelectron": 2,
   "nmo": 4,
   "nocc": 1,
-  "scf_wall_seconds": 0.045,
+  "scf_wall_seconds": 0.069,
   "xc": "hf"
  },
  "moment_error": {
@@ -117,7 +117,7 @@
   "optimise_chempot": false,
   "polarizability": "drpa"
  },
- "peak_memory_gb": 0.2153,
+ "peak_memory_gb": 0.2138,
  "provenance": {
   "blas": {
    "blas": {
@@ -134,7 +134,7 @@
   "code": {
    "baseline_script": {
     "branch": "m4-convolve-gemm",
-    "commit": "7b7f280e0dcd3cd21e5c37a70d636592ae3caeb5",
+    "commit": "68779b1ad78147da4d4c9eb3a2ca0aa1fe0d3657",
     "dirty": true,
     "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/baseline"
    },
@@ -150,7 +150,7 @@
    },
    "momentGW": {
     "branch": "m4-convolve-gemm",
-    "commit": "7b7f280e0dcd3cd21e5c37a70d636592ae3caeb5",
+    "commit": "68779b1ad78147da4d4c9eb3a2ca0aa1fe0d3657",
     "dirty": true,
     "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/momentGW/__init__.py",
     "version": "1.0.0"
@@ -167,7 +167,7 @@
     "OPENBLAS_NUM_THREADS": null
    }
   },
-  "recorded_utc": "2026-08-10T14:40:20Z",
+  "recorded_utc": "2026-08-10T16:01:32Z",
   "versions": {
    "numpy": "2.3.5",
    "pyscf": "2.14.0",
@@ -206,7 +206,7 @@
     ],
     "relative_frobenius": [
      9.275124070154368e-16,
-     1.374247686264867e-15,
+     1.3742476862648669e-15,
      2.2393181140225984e-15,
      2.8449146750570175e-15
     ],
@@ -227,7 +227,7 @@
    "order_reduced": false,
    "reconstructed_moments": {
     "frobenius": [
-     0.0923277090186547,
+     0.09232770901865471,
      0.2178517737931351,
      0.5358596285496033,
      1.3730721585800938
@@ -270,9 +270,9 @@
      3
     ],
     "relative_frobenius": [
-     1.0500686954743552e-15,
+     1.0500686954743554e-15,
      1.6460887141631228e-15,
-     1.6087625387401855e-15,
+     1.6087625387401857e-15,
      1.840747678890275e-15
     ],
     "relative_max": [
@@ -414,7 +414,7 @@
   "hole": {
    "frobenius": [
     0.09232770901865466,
-    0.21785177379313486,
+    0.21785177379313483,
     0.5358596285496021,
     1.37307215858009
    ],
@@ -433,9 +433,9 @@
   },
   "particle": {
    "frobenius": [
-    0.1854501607599947,
+    0.18545016075999474,
     0.5382253499388131,
-    1.6283012583606356,
+    1.6283012583606358,
     5.105955284691337
    ],
    "max_abs": [
@@ -468,14 +468,14 @@
  },
  "timings_seconds": {
   "dd_moments": 0.0001,
-  "dyson": 0.0226,
-  "eta0": 0.0126,
+  "dyson": 0.0373,
+  "eta0": 0.018,
   "eta0_oracle": 0.0001,
-  "integrals": 0.0008,
-  "realization_diagnostics": 0.0002,
-  "se_moments_from_dd": 0.0007,
-  "se_moments_streaming": 0.008,
-  "se_static": 0.0002,
-  "total": 0.0465
+  "integrals": 0.0009,
+  "realization_diagnostics": 0.0003,
+  "se_moments_from_dd": 0.0012,
+  "se_moments_streaming": 0.0121,
+  "se_static": 0.0003,
+  "total": 0.0723
  }
 }

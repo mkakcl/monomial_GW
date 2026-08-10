@@ -324,16 +324,25 @@ class dTDA(BaseSE):
         moments_occ = np.zeros((self.nmom_max + 1, self.nmo, self.nmo))
         moments_vir = np.zeros((self.nmom_max + 1, self.nmo, self.nmo))
 
-        # Reorder the integrals so that the external index leads. Each order below needs
-        # `Lp.T @ eta_aux @ Lp` for every external orbital, which is a batched pair of
-        # GEMMs; with the external index last, neither operand of the batch is contiguous
-        # and the batch runs at less than half the achievable rate. The copy costs a second
-        # `Lpx` for the duration of this routine (naux * nmo * nx doubles: 0.06 GB for
-        # benzene/cc-pVDZ, 0.36 GB for cc-pVTZ), and is made once and reused by every order.
-        # Emitting this layout from `Integrals.transform` would remove the copy, but `Lpx`
-        # is shared with the unrestricted and periodic solvers, which are out of scope until
-        # Milestone 6.
-        Lxp = np.ascontiguousarray(self.integrals.Lpx.transpose(2, 0, 1))  # (G, aux, MO)
+        # Reorder the integrals so that the external index sits between the auxiliary and MO
+        # indices. Each order below needs `Lp.T @ eta_aux @ Lp` for every external orbital.
+        # With the external index last neither operand is contiguous and the work runs at
+        # well under the achievable rate; with it *first* both are, but the left product
+        # becomes a batch of `nx` modest GEMMs. Putting it in the middle gets both: the
+        # auxiliary index still leads, so the left product is a single large GEMM against a
+        # flat `(aux, nx * MO)` view, and each external orbital's slice keeps MO contiguous,
+        # so the right product needs no copy either. Measured on benzene/cc-pVTZ at
+        # `nmom_max = 11` against the external-index-first layout: the transpose itself falls
+        # from 1.20 s to 0.31 s, because it only swaps the trailing two axes rather than
+        # rotating the whole array, and the per-order work from 1.64 s to 1.40 s -- 20.9 s to
+        # 17.1 s over twelve orders. The copy costs a second `Lpx` for the duration of this
+        # routine (naux * nmo * nx doubles: 0.06 GB for benzene/cc-pVDZ, 0.36 GB for
+        # cc-pVTZ), unchanged. Emitting this layout from `Integrals.transform` would remove
+        # the copy, but `Lpx` is shared with the unrestricted and periodic solvers, which are
+        # out of scope until Milestone 6.
+        Lgp = np.ascontiguousarray(self.integrals.Lpx.transpose(0, 2, 1))  # (aux, G, MO)
+        naux, nx, nmo_ = Lgp.shape
+        Lgp_flat = Lgp.reshape(naux, nx * nmo_)
 
         # Get the moments in (aux|aux) and rotate to (mo|mo)
         for n in range(self.nmom_max + 1):
@@ -342,11 +351,15 @@ class dTDA(BaseSE):
             else:
                 eta_aux = np.dot(moments_dd[n], self.integrals.Lia.T)  # aux^2 o v
             eta_aux = mpi_helper.allreduce(eta_aux)
-            rotated = np.matmul(eta_aux, Lxp)  # (G, aux, MO)
+            rotated = (eta_aux @ Lgp_flat).reshape(naux, nx, nmo_)  # (aux, G, MO)
             if self.gw.diagonal_se:
-                eta = np.sum(Lxp * rotated, axis=1) * 2.0  # (G, MO)
+                eta = np.sum(Lgp * rotated, axis=0) * 2.0  # (G, MO)
             else:
-                eta = np.matmul(Lxp.transpose(0, 2, 1), rotated) * 2.0  # (G, MO, MO)
+                eta = np.empty((nx, nmo_, nmo_))
+                for g in range(nx):
+                    # Both slices keep MO contiguous, so these go straight to BLAS.
+                    np.matmul(Lgp[:, g, :].T, rotated[:, g, :], out=eta[g])
+                eta *= 2.0
 
             # Construct the self-energy moments for this order only to
             # save memory

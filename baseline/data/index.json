@@ -227,7 +227,7 @@
   "code": {
    "baseline_script": {
     "branch": "m4-convolve-gemm",
-    "commit": "7b7f280e0dcd3cd21e5c37a70d636592ae3caeb5",
+    "commit": "68779b1ad78147da4d4c9eb3a2ca0aa1fe0d3657",
     "dirty": true,
     "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/baseline"
    },
@@ -243,7 +243,7 @@
    },
    "momentGW": {
     "branch": "m4-convolve-gemm",
-    "commit": "7b7f280e0dcd3cd21e5c37a70d636592ae3caeb5",
+    "commit": "68779b1ad78147da4d4c9eb3a2ca0aa1fe0d3657",
     "dirty": true,
     "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/momentGW/__init__.py",
     "version": "1.0.0"
@@ -260,7 +260,7 @@
     "OPENBLAS_NUM_THREADS": null
    }
   },
-  "recorded_utc": "2026-08-10T14:40:20Z",
+  "recorded_utc": "2026-08-10T16:01:32Z",
   "versions": {
    "numpy": "2.3.5",
    "pyscf": "2.14.0",

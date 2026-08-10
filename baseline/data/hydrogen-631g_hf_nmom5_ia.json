@@ -81,9 +81,9 @@
   "se_n_poles": 24
  },
  "load_average": [
-  3.19,
-  5.26,
-  5.89
+  6.71,
+  8.04,
+  6.77
  ],
  "mean_field": {
   "auxbasis": null,
@@ -96,7 +96,7 @@
   "nelectron": 2,
   "nmo": 4,
   "nocc": 1,
-  "scf_wall_seconds": 0.045,
+  "scf_wall_seconds": 0.069,
   "xc": "hf"
  },
  "moment_error": {
@@ -123,7 +123,7 @@
   "optimise_chempot": false,
   "polarizability": "drpa"
  },
- "peak_memory_gb": 0.2153,
+ "peak_memory_gb": 0.2138,
  "provenance": {
   "blas": {
    "blas": {
@@ -140,7 +140,7 @@
   "code": {
    "baseline_script": {
     "branch": "m4-convolve-gemm",
-    "commit": "7b7f280e0dcd3cd21e5c37a70d636592ae3caeb5",
+    "commit": "68779b1ad78147da4d4c9eb3a2ca0aa1fe0d3657",
     "dirty": true,
     "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/baseline"
    },
@@ -156,7 +156,7 @@
    },
    "momentGW": {
     "branch": "m4-convolve-gemm",
-    "commit": "7b7f280e0dcd3cd21e5c37a70d636592ae3caeb5",
+    "commit": "68779b1ad78147da4d4c9eb3a2ca0aa1fe0d3657",
     "dirty": true,
     "path": "/Users/marcusallen/Desktop/monomial_GW/monomial_GW/momentGW/__init__.py",
     "version": "1.0.0"
@@ -173,7 +173,7 @@
     "OPENBLAS_NUM_THREADS": null
    }
   },
-  "recorded_utc": "2026-08-10T14:40:20Z",
+  "recorded_utc": "2026-08-10T16:01:32Z",
   "versions": {
    "numpy": "2.3.5",
    "pyscf": "2.14.0",
@@ -191,7 +191,7 @@
   "hole": {
    "errors": {
     "absolute_frobenius": [
-     9.44072629779069e-17,
+     9.440726297790689e-17,
      3.1697574619206685e-16,
      1.1598946421401076e-15,
      3.454871654730763e-15,
@@ -217,7 +217,7 @@
      5
     ],
     "relative_frobenius": [
-     1.0225236170306369e-15,
+     1.0225236170306367e-15,
      1.4550064967249568e-15,
      2.1645494087314724e-15,
      2.5161617567888686e-15,
@@ -275,9 +275,9 @@
      1.9216924656244625e-16,
      9.25744474207522e-16,
      2.82798805594703e-15,
-     9.913884625604047e-15,
-     4.0437816265932936e-14,
-     1.892000605260452e-13
+     9.913884625604049e-15,
+     4.043781626593293e-14,
+     1.8920006052604517e-13
     ],
     "absolute_max": [
      1.3877787807814457e-16,
@@ -298,11 +298,11 @@
      5
     ],
     "relative_frobenius": [
-     1.0362312212344059e-15,
+     1.036231221234406e-15,
      1.719994188889028e-15,
-     1.7367720140400995e-15,
-     1.9416316972707993e-15,
-     2.4463007109356646e-15,
+     1.7367720140400997e-15,
+     1.9416316972707997e-15,
+     2.446300710935664e-15,
      3.4369646355121858e-15
     ],
     "relative_max": [
@@ -518,14 +518,14 @@
  },
  "timings_seconds": {
   "dd_moments": 0.0001,
-  "dyson": 0.0284,
-  "eta0": 0.0114,
+  "dyson": 0.0456,
+  "eta0": 0.0165,
   "eta0_oracle": 0.0001,
-  "integrals": 0.0006,
-  "realization_diagnostics": 0.0002,
-  "se_moments_from_dd": 0.0012,
-  "se_moments_streaming": 0.0086,
-  "se_static": 0.0002,
-  "total": 0.052
+  "integrals": 0.0009,
+  "realization_diagnostics": 0.0004,
+  "se_moments_from_dd": 0.0024,
+  "se_moments_streaming": 0.0133,
+  "se_static": 0.0003,
+  "total": 0.0817
  }
 }
