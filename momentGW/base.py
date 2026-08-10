@@ -370,6 +370,12 @@ class BaseGW(Base):
         against `eta0_tol`. The measured scalar error is still reported,
         and a tolerance miss warns rather than raises. Default value is
         `None`.
+    moment_order_convergence : bool, optional
+        If `True`, also realize the self-energy at `nmom_max - 2` and report how
+        far the frontier moved, as an estimate of the moment-truncation error.
+        The moments already built contain every lower order exactly, so this
+        costs a realization and a Dyson solve rather than a second moment
+        construction. Default value is `False`.
     eta0_check_refinement : bool, optional
         If `True`, repeat the `"hht"` zeroth moment with four more poles
         and record the difference as a secondary regression signal. Not
@@ -418,6 +424,7 @@ class BaseGW(Base):
         eta0_tol=1e-14,
         eta0_n_poles=None,
         eta0_check_refinement=False,
+        moment_order_convergence=False,
         optimise_chempot=False,
         fock_loop=False,
         fock_opts=OrderedDict(

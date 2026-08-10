@@ -217,6 +217,63 @@ class Test_GW(unittest.TestCase):
         ea = 0.006558884450397966
         self._test_regression("hf", dict(fock_loop=True), 1, ip, ea, "fock loop")
 
+    def test_moment_order_convergence_off_by_default(self):
+        """The truncation estimate costs a second solve, so it is opt-in."""
+        gw = GW(self.mf)
+        gw.kernel(3)
+        self.assertIsNone(gw.dyson_diagnostics["moment_order_convergence"])
+
+    def test_moment_order_convergence_matches_an_explicit_pair(self):
+        """The estimate equals the shift between two independent calculations.
+
+        The whole point of reusing the moments is that truncating them to `nmom_max - 1`
+        entries is identical to having built them at `nmom_max - 2`. This checks that
+        against the two-calculation version rather than assuming it.
+        """
+        gw = GW(self.mf, moment_order_convergence=True)
+        gw.kernel(5)
+        record = gw.dyson_diagnostics["moment_order_convergence"]
+
+        self.assertEqual(record["nmom_max"], 5)
+        self.assertEqual(record["nmom_max_compared"], 3)
+        self.assertFalse(record["self_consistent_excluded"])
+
+        lower = GW(self.mf)
+        lower.kernel(3)
+        upper = GW(self.mf)
+        upper.kernel(5)
+        for name, index, sector in (("homo", -1, "occupied"), ("lumo", 0, "virtual")):
+            expected = (
+                getattr(getattr(upper.gf.physical(weight=0.1), sector)(), "energies")[index]
+                - getattr(getattr(lower.gf.physical(weight=0.1), sector)(), "energies")[index]
+            )
+            self.assertAlmostEqual(record[f"{name}_shift"], expected, 10, msg=name)
+
+    def test_moment_order_convergence_reports_the_dominant_orbital(self):
+        """A level crossing has to be visible, not read as a large shift."""
+        gw = GW(self.mf, moment_order_convergence=True)
+        gw.kernel(5)
+        record = gw.dyson_diagnostics["moment_order_convergence"]
+
+        for name in ("homo", "lumo"):
+            self.assertIn(f"{name}_orbital", record["frontier"])
+            self.assertIn(f"{name}_orbital", record["frontier_compared"])
+            self.assertIsInstance(record[f"{name}_orbital_changed"], bool)
+
+    def test_moment_order_convergence_needs_a_lower_order(self):
+        """`nmom_max = 1` has nothing to compare against and says so."""
+        gw = GW(self.mf, moment_order_convergence=True)
+        gw.kernel(1)
+        self.assertIsNone(gw.dyson_diagnostics["moment_order_convergence"])
+
+    def test_moment_order_convergence_does_not_change_the_result(self):
+        """Switching the estimate on is a diagnostic, not a change of calculation."""
+        off = GW(self.mf)
+        off.kernel(3)
+        on = GW(self.mf, moment_order_convergence=True)
+        on.kernel(3)
+        np.testing.assert_allclose(on.qp_energy, off.qp_energy, rtol=0, atol=0)
+
     def test_regression_fock_loop_nmom3(self):
         # Dyson's `Spectral` is shared with the Fock loop, which the recorded baseline
         # never exercises: `baseline/run.py` stores `fock_loop` as provenance but does not
