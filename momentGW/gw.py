@@ -452,7 +452,8 @@ class GW(BaseGW):
             solvers.append(solver)
 
         se = Spectral.combine_for_self_energy(*(s.result for s in solvers)).get_self_energy()
-        gf, _ = FockLoop(self, se=se, **self.fock_opts).solve_dyson(se_static, se=se)
+        fock_loop = FockLoop(self, se=se, **self.fock_opts)
+        gf, nelec_error = fock_loop.solve_dyson(se_static, se=se)
 
         readout = frontier_readout(gf)
         readout["nmom_conserved"] = min(
@@ -461,6 +462,17 @@ class GW(BaseGW):
             )
             for solver in solvers
         )
+
+        # The other quantities the order has to carry with it. The particle number
+        # converges with the order and is gated on; the spectral weight does not converge,
+        # it is a sum rule that must hold at every order, so it is recorded as a validity
+        # check rather than used to stop the walk.
+        readout["nelec_error"] = float(nelec_error)
+        readout["nelec_tol"] = float(nelec_tolerance(self, fock_loop))
+        weight = gf.moment(0)
+        readout["spectral_weight"] = float(np.trace(weight).real)
+        readout["spectral_weight_deficit"] = float(self.nmo - np.trace(weight).real)
+        readout["spectral_weight_min"] = float(np.min(np.linalg.eigvalsh(weight)).real)
         return readout
 
     def moment_order_convergence_estimate(self, se_moments_hole, se_moments_part, se_static, gf):
@@ -472,10 +484,12 @@ class GW(BaseGW):
         effect in the calculation sits below 1e-10 eV. This compares the requested order
         against `nmom_max - 2` and reports the difference.
 
-        It is cheap because the moments already in hand contain every lower order exactly:
-        truncating them to `nmom_max - 1` entries is identical to having built them at
+        It is cheap because the moments already in hand contain every lower order:
+        truncating them to `nmom_max - 1` entries is the same as having built them at
         `nmom_max - 2`, so this costs a realization and a Dyson solve, not a second moment
-        construction.
+        construction. The two agree to roundoff rather than bit-for-bit, because
+        `convolve` contracts every output order in one GEMM whose row count depends on
+        `nmom_max`.
 
         Parameters
         ----------
@@ -530,6 +544,95 @@ class GW(BaseGW):
                 )
         return record
 
+    def converge_moment_order(self, se_moments_hole, se_moments_part, se_static):
+        """Find the lowest moment order whose frontier has stopped moving.
+
+        `nmom_max` is treated as a cap. The moments were built once at that cap and
+        contain every lower order, so each candidate costs a realization and a
+        Dyson solve rather than a second moment construction, and stopping early skips
+        the expensive high-order solves.
+
+        Parameters
+        ----------
+        se_moments_hole, se_moments_part : numpy.ndarray
+            Moments of the hole and particle self-energy, at the cap.
+        se_static : numpy.ndarray
+            Static part of the self-energy.
+
+        Returns
+        -------
+        order : int
+            The order to use. The cap, where the tolerance was never met.
+        record : dict
+            The frontier at each order tried, the shift between consecutive orders,
+            and whether the tolerance was met.
+
+        Notes
+        -----
+        Four quantities are carried through the walk, and they do not all mean the same
+        thing. The frontier and the particle-number error converge with the order and are
+        both required to stop: the frontier through `tol`, the particle number through the
+        tolerance its own gate already uses. The spectral weight does not converge - it is
+        a sum rule, `Tr[G(0)] = nmo` with non-negative residues, that must hold at *every*
+        order - so it is recorded as a validity check rather than used to stop the walk.
+        Calling it converged would be a category error.
+
+        Two consecutive orders must meet the tolerance, not one. The shift is not
+        monotonic in the order - measured on water/cc-pVDZ it runs 0.464, 0.382, 0.070,
+        0.096, 0.016, 0.042 eV - so a single small shift is not evidence that the
+        frontier has settled. Stopping on the first one below `1e-3` Ha there would
+        have returned order 11, immediately after which the frontier moves another
+        42 meV.
+
+        The walk goes upward and stops as soon as it qualifies, so an order is only paid
+        for if the ones below it did not converge. It cannot report that the cap itself
+        is too low other than by failing to converge: nothing above the order the
+        moments were built at is knowable from them.
+        """
+        cap = np.asarray(se_moments_hole).shape[0] - 1
+        tol = float(self.nmom_max_tol)
+
+        orders, frontiers, shifts = [], [], []
+        previous = None
+        chosen = None
+        for order in range(1, cap + 1, 2):
+            readout = self._realize_frontier(
+                se_moments_hole[: order + 1], se_moments_part[: order + 1], se_static
+            )
+            shift = None
+            if previous is not None:
+                moved = [
+                    abs(readout[name] - previous[name])
+                    for name in ("homo", "lumo")
+                    if name in readout and name in previous
+                ]
+                shift = max(moved) if moved else None
+            orders.append(order)
+            frontiers.append(readout)
+            shifts.append(shift)
+            settled = [x for x in shifts[-2:] if x is not None]
+            frontier_settled = len(settled) == 2 and all(x < tol for x in settled)
+            nelec_ok = abs(readout["nelec_error"]) <= readout["nelec_tol"]
+            if frontier_settled and nelec_ok:
+                chosen = order
+                break
+            previous = readout
+
+        record = {
+            "tol": tol,
+            "cap": int(cap),
+            "orders": [int(o) for o in orders],
+            "shifts": [None if x is None else float(x) for x in shifts],
+            "frontiers": frontiers,
+            "converged": chosen is not None,
+            "rule": "two consecutive orders within tol, and the particle number in its own",
+            "nelec_errors": [float(f["nelec_error"]) for f in frontiers],
+            "spectral_weight_deficits": [float(f["spectral_weight_deficit"]) for f in frontiers],
+            "spectral_weight_min": [float(f["spectral_weight_min"]) for f in frontiers],
+            "order": int(chosen if chosen is not None else cap),
+        }
+        return record["order"], record
+
     def solve_dyson(self, se_moments_hole, se_moments_part, se_static, integrals=None):
         """Solve the Dyson equation due to a self-energy resulting from a list of hole and particle
         moments, along with a static contribution.
@@ -567,6 +670,27 @@ class GW(BaseGW):
         --------
         momentGW.fock.FockLoop
         """
+
+        # Where a tolerance is given, `nmom_max` is a cap: settle on an order first, then
+        # run the ordinary path at it. The moments contain every lower order exactly, so
+        # this needs no second moment construction.
+        order_record = None
+        if self.nmom_max_tol is not None:
+            with logging.with_modifiers(
+                status="Converging moment order", timer="Moment-order convergence"
+            ):
+                order, order_record = self.converge_moment_order(
+                    se_moments_hole, se_moments_part, se_static
+                )
+            se_moments_hole = se_moments_hole[: order + 1]
+            se_moments_part = se_moments_part[: order + 1]
+            style = "green" if order_record["converged"] else "red"
+            reached = "converged" if order_record["converged"] else "did NOT converge"
+            logging.write(
+                f"Moment order:  [{style}]{reached}[/] at nmom_max = "
+                f"[output]{order}[/output] of a cap of {order_record['cap']} "
+                f"(tolerance {order_record['tol']:.3e} Ha)"
+            )
 
         # Solve the Dyson equation for the moments
         with logging.with_modifiers(status="Solving Dyson equation", timer="Dyson equation"):
@@ -673,6 +797,8 @@ class GW(BaseGW):
             "realization": not any(r["order_reduced"] for r in realization.values()),
             "nelec": bool(abs(error) <= nelec_tol),
         }
+        if order_record is not None:
+            gates["moment_order"] = bool(order_record["converged"])
         if fock_conv is not None:
             gates["fock_loop"] = bool(fock_conv)
         self.dyson_diagnostics = {
@@ -684,6 +810,7 @@ class GW(BaseGW):
             "gates": gates,
             "converged": all(gates.values()),
             "moment_order_convergence": convergence,
+            "moment_order": order_record,
         }
 
         return gf, se

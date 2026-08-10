@@ -274,6 +274,95 @@ class Test_GW(unittest.TestCase):
         on.kernel(3)
         np.testing.assert_allclose(on.qp_energy, off.qp_energy, rtol=0, atol=0)
 
+    def test_nmom_max_tol_off_by_default(self):
+        """Without a tolerance, `nmom_max` means exactly what it always meant."""
+        gw = GW(self.mf)
+        gw.kernel(5)
+        self.assertIsNone(gw.dyson_diagnostics["moment_order"])
+        self.assertNotIn("moment_order", gw.dyson_diagnostics["gates"])
+
+    def test_nmom_max_tol_stops_early_and_matches_that_order(self):
+        """A loose tolerance stops below the cap, and gives that order's answer.
+
+        The point of reusing the moments is that a truncated set is the same as one
+        built at the lower order, so the adaptive result must match a plain run at the
+        order it settled on. They agree to roundoff rather than bit-for-bit: `convolve`
+        contracts every output order in one GEMM, whose row count depends on `nmom_max`,
+        so the two builds sum in a slightly different order.
+        """
+        gw = GW(self.mf, nmom_max_tol=1e-1)
+        gw.kernel(7)
+        record = gw.dyson_diagnostics["moment_order"]
+
+        self.assertTrue(record["converged"])
+        self.assertLess(record["order"], 7)
+        self.assertEqual(record["cap"], 7)
+        self.assertTrue(gw.dyson_diagnostics["gates"]["moment_order"])
+
+        plain = GW(self.mf)
+        plain.kernel(record["order"])
+        np.testing.assert_allclose(gw.qp_energy, plain.qp_energy, rtol=0, atol=1e-11)
+
+    def test_nmom_max_tol_needs_two_consecutive_orders(self):
+        """One small shift is not convergence; the shift is not monotonic in the order."""
+        gw = GW(self.mf, nmom_max_tol=1e-1)
+        gw.kernel(7)
+        record = gw.dyson_diagnostics["moment_order"]
+
+        settled = [x for x in record["shifts"] if x is not None][-2:]
+        self.assertEqual(len(settled), 2)
+        for shift in settled:
+            self.assertLess(shift, record["tol"])
+
+    def test_nmom_max_tol_unmet_is_reported_as_unconverged(self):
+        """Reaching the cap without meeting the tolerance fails the gate."""
+        gw = GW(self.mf, nmom_max_tol=1e-12)
+        gw.kernel(5)
+        record = gw.dyson_diagnostics["moment_order"]
+
+        self.assertFalse(record["converged"])
+        self.assertEqual(record["order"], 5)
+        self.assertFalse(gw.dyson_diagnostics["gates"]["moment_order"])
+        self.assertFalse(gw.dyson_diagnostics["converged"])
+        self.assertFalse(gw.converged)
+
+    def test_nmom_max_tol_carries_the_other_quantities(self):
+        """The walk records more than the frontier, one entry per order tried."""
+        gw = GW(self.mf, nmom_max_tol=1e-1)
+        gw.kernel(7)
+        record = gw.dyson_diagnostics["moment_order"]
+
+        n = len(record["orders"])
+        for key in ("shifts", "nelec_errors", "spectral_weight_deficits", "spectral_weight_min"):
+            self.assertEqual(len(record[key]), n, msg=key)
+
+    def test_nmom_max_tol_requires_the_particle_number_too(self):
+        """The order it settles on must satisfy the particle-number gate as well."""
+        gw = GW(self.mf, nmom_max_tol=1e-1)
+        gw.kernel(7)
+        record = gw.dyson_diagnostics["moment_order"]
+
+        self.assertTrue(record["converged"])
+        chosen = record["frontiers"][-1]
+        self.assertLessEqual(abs(chosen["nelec_error"]), chosen["nelec_tol"])
+
+    def test_spectral_weight_sum_rule_holds_at_every_order(self):
+        """`Tr[G(0)] = nmo` with non-negative residues is a sum rule, not a limit.
+
+        It is recorded as a validity check rather than a convergence criterion because it
+        holds at every order by construction; the value of the check is that a future
+        change breaking it would be caught.
+        """
+        gw = GW(self.mf, nmom_max_tol=1e-1)
+        gw.kernel(7)
+        record = gw.dyson_diagnostics["moment_order"]
+
+        for deficit, smallest in zip(
+            record["spectral_weight_deficits"], record["spectral_weight_min"]
+        ):
+            self.assertAlmostEqual(deficit, 0.0, 10)
+            self.assertGreater(smallest, -1e-10)
+
     def test_regression_fock_loop_nmom3(self):
         # Dyson's `Spectral` is shared with the Fock loop, which the recorded baseline
         # never exercises: `baseline/run.py` stores `fock_loop` as provenance but does not
