@@ -179,6 +179,24 @@ solves lost to an explicit inverse.
 
 ## 5. Options
 
+> **Closed, 2026-08-10.** Options 1, 2 and 3 are not worth pursuing, and the reason is not
+> the one this section reasons towards. The Dyson stage was reduced by removing work rather
+> than by replacing an eigensolver (`mkakcl/dyson#6`), and after that there is exactly one
+> genuine arrowhead eigendecomposition left in a G0W0 run. Measured ceilings on the whole
+> calculation, were each option's target made *free*:
+>
+> | option | target after the Tier 1 work | ceiling |
+> | --- | --- | --- |
+> | 1 — Golub-Welsch on the block-tridiagonal | ~2% | **1.02x** |
+> | 2 — arrowhead / DPRk secular solver | ~6% (cc-pVTZ) | **1.06x** |
+> | 3 — windowed / shift-invert solve | ~6% (cc-pVTZ) | **1.06x** |
+>
+> Option 3 additionally needs the §7.1 prerequisite before it returns anything on the
+> default path. None of the three justifies its accuracy risk or its effort at those
+> ceilings. The dominant stage is now the moment construction, not the Dyson solve. See
+> [`DIAGONALISATION_ROADMAP.md`](DIAGONALISATION_ROADMAP.md) §2.2 and §0.6.
+
+
 ### Option 0 — leave it
 
 Free, and defensible. 7.7–15.6% of runtime with a hard ceiling, in code that is correct
