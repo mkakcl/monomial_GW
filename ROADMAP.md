@@ -401,8 +401,18 @@ below.
   order - on water/cc-pVDZ it runs 0.464, 0.382, 0.070, 0.096, 0.016, 0.042 eV - and a
   single-shift rule stops at order 11 for a 1e-3 Ha tolerance, immediately after which the
   frontier moves another 42 meV.
-- [ ] Converge reconstructed moments, particle number, and positive spectral weight
-  alongside the frontier.
+- [x] Carry the other quantities through the walk, distinguishing what converges from
+  what must simply hold. The **particle-number error** converges with the order and is
+  required as well as the frontier, against the tolerance its own gate already uses. The
+  **spectral weight** does not converge: `Tr[G(0)] = nmo` with non-negative residues is a
+  sum rule that holds at every order, so it is recorded as a validity check, not a
+  stopping criterion - calling it converged would be a category error. Measured on
+  water/cc-pVDZ it is satisfied by construction at every order (deficit ~1e-14, smallest
+  residue exactly 1.0), so the check has no discriminating power today and earns its place
+  only as a guard against a future change breaking it. The **reconstructed-moment**
+  residual is already reported per sector and order by 1.1, at the realized order, and is
+  a realization-fidelity measure rather than an order-convergence one; it stays at ~1e-15
+  throughout (see 3.3's opening note).
 - [ ] Step down automatically when the next block fails the delivered-moment or PSD
   gate.
 - [ ] Report requested, built, conserved, and realized orders separately.

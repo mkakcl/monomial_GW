@@ -452,7 +452,8 @@ class GW(BaseGW):
             solvers.append(solver)
 
         se = Spectral.combine_for_self_energy(*(s.result for s in solvers)).get_self_energy()
-        gf, _ = FockLoop(self, se=se, **self.fock_opts).solve_dyson(se_static, se=se)
+        fock_loop = FockLoop(self, se=se, **self.fock_opts)
+        gf, nelec_error = fock_loop.solve_dyson(se_static, se=se)
 
         readout = frontier_readout(gf)
         readout["nmom_conserved"] = min(
@@ -461,6 +462,17 @@ class GW(BaseGW):
             )
             for solver in solvers
         )
+
+        # The other quantities the order has to carry with it. The particle number
+        # converges with the order and is gated on; the spectral weight does not converge,
+        # it is a sum rule that must hold at every order, so it is recorded as a validity
+        # check rather than used to stop the walk.
+        readout["nelec_error"] = float(nelec_error)
+        readout["nelec_tol"] = float(nelec_tolerance(self, fock_loop))
+        weight = gf.moment(0)
+        readout["spectral_weight"] = float(np.trace(weight).real)
+        readout["spectral_weight_deficit"] = float(self.nmo - np.trace(weight).real)
+        readout["spectral_weight_min"] = float(np.min(np.linalg.eigvalsh(weight)).real)
         return readout
 
     def moment_order_convergence_estimate(self, se_moments_hole, se_moments_part, se_static, gf):
@@ -557,6 +569,14 @@ class GW(BaseGW):
 
         Notes
         -----
+        Four quantities are carried through the walk, and they do not all mean the same
+        thing. The frontier and the particle-number error converge with the order and are
+        both required to stop: the frontier through `tol`, the particle number through the
+        tolerance its own gate already uses. The spectral weight does not converge - it is
+        a sum rule, `Tr[G(0)] = nmo` with non-negative residues, that must hold at *every*
+        order - so it is recorded as a validity check rather than used to stop the walk.
+        Calling it converged would be a category error.
+
         Two consecutive orders must meet the tolerance, not one. The shift is not
         monotonic in the order - measured on water/cc-pVDZ it runs 0.464, 0.382, 0.070,
         0.096, 0.016, 0.042 eV - so a single small shift is not evidence that the
@@ -591,7 +611,9 @@ class GW(BaseGW):
             frontiers.append(readout)
             shifts.append(shift)
             settled = [x for x in shifts[-2:] if x is not None]
-            if len(settled) == 2 and all(x < tol for x in settled):
+            frontier_settled = len(settled) == 2 and all(x < tol for x in settled)
+            nelec_ok = abs(readout["nelec_error"]) <= readout["nelec_tol"]
+            if frontier_settled and nelec_ok:
                 chosen = order
                 break
             previous = readout
@@ -603,7 +625,10 @@ class GW(BaseGW):
             "shifts": [None if x is None else float(x) for x in shifts],
             "frontiers": frontiers,
             "converged": chosen is not None,
-            "rule": "two consecutive orders within tol",
+            "rule": "two consecutive orders within tol, and the particle number in its own",
+            "nelec_errors": [float(f["nelec_error"]) for f in frontiers],
+            "spectral_weight_deficits": [float(f["spectral_weight_deficit"]) for f in frontiers],
+            "spectral_weight_min": [float(f["spectral_weight_min"]) for f in frontiers],
             "order": int(chosen if chosen is not None else cap),
         }
         return record["order"], record

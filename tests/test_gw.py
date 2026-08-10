@@ -326,6 +326,43 @@ class Test_GW(unittest.TestCase):
         self.assertFalse(gw.dyson_diagnostics["converged"])
         self.assertFalse(gw.converged)
 
+    def test_nmom_max_tol_carries_the_other_quantities(self):
+        """The walk records more than the frontier, one entry per order tried."""
+        gw = GW(self.mf, nmom_max_tol=1e-1)
+        gw.kernel(7)
+        record = gw.dyson_diagnostics["moment_order"]
+
+        n = len(record["orders"])
+        for key in ("shifts", "nelec_errors", "spectral_weight_deficits", "spectral_weight_min"):
+            self.assertEqual(len(record[key]), n, msg=key)
+
+    def test_nmom_max_tol_requires_the_particle_number_too(self):
+        """The order it settles on must satisfy the particle-number gate as well."""
+        gw = GW(self.mf, nmom_max_tol=1e-1)
+        gw.kernel(7)
+        record = gw.dyson_diagnostics["moment_order"]
+
+        self.assertTrue(record["converged"])
+        chosen = record["frontiers"][-1]
+        self.assertLessEqual(abs(chosen["nelec_error"]), chosen["nelec_tol"])
+
+    def test_spectral_weight_sum_rule_holds_at_every_order(self):
+        """`Tr[G(0)] = nmo` with non-negative residues is a sum rule, not a limit.
+
+        It is recorded as a validity check rather than a convergence criterion because it
+        holds at every order by construction; the value of the check is that a future
+        change breaking it would be caught.
+        """
+        gw = GW(self.mf, nmom_max_tol=1e-1)
+        gw.kernel(7)
+        record = gw.dyson_diagnostics["moment_order"]
+
+        for deficit, smallest in zip(
+            record["spectral_weight_deficits"], record["spectral_weight_min"]
+        ):
+            self.assertAlmostEqual(deficit, 0.0, 10)
+            self.assertGreater(smallest, -1e-10)
+
     def test_regression_fock_loop_nmom3(self):
         # Dyson's `Spectral` is shared with the Fock loop, which the recorded baseline
         # never exercises: `baseline/run.py` stores `fock_loop` as provenance but does not
