@@ -363,6 +363,53 @@ class Test_GW(unittest.TestCase):
             self.assertAlmostEqual(deficit, 0.0, 10)
             self.assertGreater(smallest, -1e-10)
 
+    def test_error_budget_collects_every_measured_contribution(self):
+        """Each source that is measured somewhere appears once, with its own unit."""
+        gw = GW(self.mf, moment_order_convergence=True)
+        gw.kernel(5)
+        budget = gw.error_budget()
+
+        for name in ("eta0", "cholesky", "realization", "particle_number", "moment_truncation"):
+            self.assertIn(name, budget["contributions"], msg=name)
+        for name, entry in budget["contributions"].items():
+            self.assertIn("unit", entry, msg=name)
+            self.assertIn("source", entry, msg=name)
+
+    def test_error_budget_ranks_only_what_converts_to_ev(self):
+        """Contributions without a measured amplification are not ranked or summed."""
+        gw = GW(self.mf, moment_order_convergence=True)
+        gw.kernel(5)
+        budget = gw.error_budget()
+
+        ranked = [row["frontier_ev"] for row in budget["ranked"]]
+        self.assertEqual(ranked, sorted(ranked, reverse=True))
+        for row in budget["ranked"]:
+            self.assertIsNotNone(budget["contributions"][row["name"]]["frontier_ev"])
+        for name in ("cholesky", "realization", "particle_number"):
+            self.assertIsNone(budget["contributions"][name]["frontier_ev"], msg=name)
+        self.assertNotIn("total", budget)
+
+    def test_error_budget_is_dominated_by_truncation(self):
+        """The whole reason for the budget: truncation dwarfs every numerical term."""
+        gw = GW(self.mf, moment_order_convergence=True)
+        gw.kernel(5)
+        budget = gw.error_budget()
+
+        self.assertEqual(budget["dominant"], "moment_truncation")
+        truncation = budget["contributions"]["moment_truncation"]["frontier_ev"]
+        eta0 = budget["contributions"]["eta0"]["frontier_ev"]
+        self.assertGreater(truncation, 1e6 * eta0)
+
+    def test_error_budget_names_what_it_cannot_measure(self):
+        """A contribution that is not measured is listed, not silently omitted."""
+        gw = GW(self.mf)
+        gw.kernel(5)
+        budget = gw.error_budget()
+
+        self.assertNotIn("moment_truncation", budget["contributions"])
+        self.assertTrue(any("moment_truncation" in item for item in budget["unquantified"]))
+        self.assertTrue(any("compression" in item for item in budget["unquantified"]))
+
     def test_regression_fock_loop_nmom3(self):
         # Dyson's `Spectral` is shared with the Fock loop, which the recorded baseline
         # never exercises: `baseline/run.py` stores `fock_loop` as provenance but does not

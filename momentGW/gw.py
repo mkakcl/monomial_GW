@@ -633,6 +633,144 @@ class GW(BaseGW):
         }
         return record["order"], record
 
+    def error_budget(self):
+        """Collect every measured error contribution into one comparable report.
+
+        Milestone 3.1. Each contribution is already measured somewhere - the eta0
+        certificate, the realization residuals, the particle-number gate, the
+        moment-order estimate - but in its own units and in its own place, which makes
+        them impossible to rank. This gathers them, converts what can honestly be
+        converted into eV on the frontier, and says plainly which cannot be.
+
+        Returns
+        -------
+        budget : dict
+            `contributions`, one entry per source, each with its native value and unit,
+            the frontier equivalent in eV where an amplification has been measured, and
+            where the number came from. `ranked` orders the ones expressible in eV.
+            `unquantified` names the contributions that are not measured at all.
+
+        Notes
+        -----
+        Deliberately not reduced to one scalar: the contributions are in different units
+        and only some have a measured path to the frontier. Summing them would invent the
+        missing conversions.
+
+        The ranking is the point. Measured on benzene/cc-pVTZ, moment truncation is tens
+        of meV while every numerical contribution is at or below 1e-10 eV, so a budget
+        that reported only the numerical terms would describe the wrong error by about
+        nine orders of magnitude.
+        """
+        contributions = {}
+        unquantified = []
+
+        eta0 = self.eta0_diagnostics
+        if eta0 is not None and eta0.get("scalar_error") is not None:
+            scalar = float(eta0["scalar_error"])
+            contributions["eta0"] = {
+                "value": scalar,
+                "unit": "relative",
+                # Milestone 2.4 measured the frontier moving by 30-300x the scalar error
+                # in eV, over water/HF, LiH/HF and ozone/PBE at nmom_max = 7. The upper
+                # end is used, so this is a bound rather than an estimate.
+                "amplification": 300.0,
+                "frontier_ev": scalar * 300.0,
+                "source": "eta0 certificate; amplification from ROADMAP 2.4",
+            }
+            residuals = eta0.get("cholesky_residuals")
+            if residuals:
+                contributions["cholesky"] = {
+                    "value": float(residuals["max"]),
+                    "unit": "relative residual",
+                    "n_poles": len(residuals.get("per_pole", ())),
+                    "amplification": None,
+                    "frontier_ev": None,
+                    "source": "eta0 per-pole solve residuals",
+                }
+
+        dyson = self.dyson_diagnostics
+        if dyson is not None:
+            realization = {}
+            for sector, record in dyson["realization"].items():
+                errors = record.get("errors")
+                if errors is None:
+                    continue
+                realization[sector] = {
+                    "max_relative_frobenius": float(errors.max_relative_frobenius),
+                    "per_order": [float(x) for x in errors.relative_frobenius],
+                    "orders": [int(x) for x in errors.orders],
+                    "nmom_conserved": int(record["nmom_conserved_achieved"]),
+                }
+            if realization:
+                worst = max(v["max_relative_frobenius"] for v in realization.values())
+                contributions["realization"] = {
+                    "value": worst,
+                    "unit": "relative",
+                    "amplification": None,
+                    "frontier_ev": None,
+                    "sectors": realization,
+                    "source": "reconstructed-moment residuals, per sector and order",
+                }
+
+            contributions["particle_number"] = {
+                "value": float(dyson["nelec_error"]),
+                "unit": "electrons",
+                "amplification": None,
+                "frontier_ev": None,
+                "tol": float(dyson["nelec_tol"]),
+                "source": "chemical-potential search",
+            }
+
+            truncation = dyson.get("moment_order_convergence")
+            if truncation is not None:
+                shifts = [
+                    abs(truncation[f"{name}_shift"])
+                    for name in ("homo", "lumo")
+                    if f"{name}_shift" in truncation
+                ]
+                if shifts:
+                    contributions["moment_truncation"] = {
+                        "value": max(shifts) * 27.211386245988,
+                        "unit": "eV",
+                        "amplification": 1.0,
+                        "frontier_ev": max(shifts) * 27.211386245988,
+                        "source": (
+                            f"frontier shift, nmom_max {truncation['nmom_max']} against "
+                            f"{truncation['nmom_max_compared']}"
+                        ),
+                    }
+            else:
+                unquantified.append(
+                    "moment_truncation (set moment_order_convergence=True to measure it; "
+                    "it is expected to dominate)"
+                )
+
+        # Named by 3.1 but not measured anywhere yet.
+        unquantified.append(
+            "auxiliary_compression (rank and discarded norm are not recorded; "
+            "Milestone 4 has the item)"
+        )
+        unquantified.append(
+            "response recurrence and self-energy convolution (exact contractions; their "
+            "error is summation order, which Milestone 4 measured at 5.2e-8 eV on the "
+            "deep states and ~1e-13 eV on the frontier, not attributed per stage)"
+        )
+
+        ranked = sorted(
+            (
+                (name, entry["frontier_ev"])
+                for name, entry in contributions.items()
+                if entry.get("frontier_ev") is not None
+            ),
+            key=lambda item: -item[1],
+        )
+        return {
+            "contributions": contributions,
+            "ranked": [{"name": n, "frontier_ev": v} for n, v in ranked],
+            "unquantified": unquantified,
+            "dominant": ranked[0][0] if ranked else None,
+        }
+
     def solve_dyson(self, se_moments_hole, se_moments_part, se_static, integrals=None):
         """Solve the Dyson equation due to a self-energy resulting from a list of hole and particle
         moments, along with a static contribution.
