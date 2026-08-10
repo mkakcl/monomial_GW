@@ -43,13 +43,23 @@ from baseline.run import DATA_DIR, build_mean_field, run_case
 EXACT = (1e-12, 0.0)
 
 #: Tolerance for a quantity that is a deterministic function of the inputs. The floor is
-#: 1e-8 relative rather than machine precision, and that is not slack: it is the measured
-#: run-to-run scatter, and it is *propagated from the quadrature grid scale below*. That
-#: scale is selected on an objective which is flat to machine precision, so it lands
-#: ~10% apart between identical runs; eta0 then differs at its own quadrature-error level,
-#: and that difference carries through the moments into the quasiparticle energies, which
-#: were measured moving by up to 1e-9 Ha (8e-11 eV in the frontier energies). Tightening
-#: this would flag the calculation's own non-determinism as a change.
+#: 1e-8 relative rather than machine precision, and that is not slack -- but the reason has
+#: changed, and the original one no longer holds.
+#:
+#: It used to be run-to-run scatter on one machine, propagated from the Clenshaw-Curtis grid
+#: scale below: that scale is chosen on an objective flat to machine precision, so it landed
+#: ~10% apart between identical runs and carried through eta0 into the quasiparticle
+#: energies. `eta0_method="hht"` became the default on 2026-08-04 and removed that source.
+#: Measured since, over all 52 cases, the worst same-machine movement of any quantity in this
+#: class is 8.67e-15 relative -- six orders inside this floor.
+#:
+#: What holds the floor now is portability, not noise. Moving the recorded set from Linux
+#: with reference BLAS/LAPACK to macOS with Accelerate moved one set of QP energies by
+#: 1.5e-8 relative, which is over this floor rather than under it (see `README.md`). So
+#: 1e-8 is marginally tight for a baseline that Milestone 0 requires to be reproducible from
+#: a fresh environment, and tightening it towards the same-machine scatter would turn every
+#: change of BLAS into a reported regression. Do not tighten without re-measuring across
+#: machines; the same-machine figure above is not the constraint.
 DETERMINISTIC = (1e-8, 1e-12)
 
 #: Tolerance for a quantity whose recorded value sits at the floating-point noise floor,

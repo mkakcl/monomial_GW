@@ -543,12 +543,18 @@ holds at ~1e-13 eV.
 moment construction, and two of them already have unchecked entries in `ROADMAP.md`
 Milestone 4:
 
-6. **`convolve`** — 9.4% of a run, against the 1% its own milestone records. The refactor
-   is already specified there; only its priority was wrong.
+6. ~~**`convolve`** — 9.4% of a run.~~ **Done** — 23x on the full sweep at `nmo = 264`, and
+   it leaves the profile entirely. The milestone's written refactor targeted the MPI
+   reduction, which is a no-op on one rank; the cost was an unfactorable `einsum` plus a
+   fancy-index copy of `eta` repeated once per output order. See `ROADMAP.md` Milestone 4.
 7. **`build_se_moments`** — 21.5%, the single largest item in the calculation, and the
    stage Milestone 4 has already optimised once.
-8. **The `ascontiguousarray` layout copy** — 3.3%, fix already named (emit the layout from
-   `Integrals.transform`), currently deferred to Milestone 6 because `Lpx` is shared.
+8. ~~**The `ascontiguousarray` layout copy** — 3.3%.~~ **Confirmed blocked, not merely
+   deferred.** `momentGW/uhf/tda.py:265` indexes `Lpx[:, :, x]`, and `uhf/ints.py` wraps
+   restricted `Integrals` objects per spin, so changing what `transform` emits breaks the
+   unrestricted path. Reaching it needs either Milestone 6 or a layout flag threaded through
+   a shared class, which is a footgun for 3%. The copy itself is now 4x cheaper anyway
+   (§2.4).
 
 Remaining in this document, both low priority:
 
@@ -570,12 +576,17 @@ Remaining in this document, both low priority:
   26–66% *relatively* — which is 6e-16 against 9e-16, exactly what `NOISE_FLOOR` exists to
   absorb.
 
-  Two consequences. First, the gate is sound, and **sharper than its own docstring
-  claims**: `DETERMINISTIC = (1e-8, 1e-12)` is documented as "the measured run-to-run
-  scatter", propagated from the Clenshaw-Curtis grid-scale plateau — but HHT became the
-  default on 2026-08-04, which removes that source, and the measured scatter is now ~1e-14
-  eV. The comment is stale and the floor is ~6 orders more generous than the path needs.
-  Worth revisiting, since a tighter gate would catch more.
+  Two consequences. First, the gate is sound. Its stated justification was stale —
+  `DETERMINISTIC = (1e-8, 1e-12)` was documented as same-machine run-to-run scatter
+  propagated from the Clenshaw-Curtis grid-scale plateau, and HHT removed that source on
+  2026-08-04; measured over all 52 cases, the worst same-machine movement in that class is
+  now 8.67e-15 relative. **But the floor should not be tightened**, which corrects an
+  earlier revision of this document that said it should. What holds it is portability, not
+  noise: moving the recorded set from Linux with reference BLAS to macOS with Accelerate
+  moved one set of QP energies by 1.5e-8 relative, *over* the floor rather than under it
+  (`baseline/README.md`). Milestone 0 requires the baseline to be reproducible from a fresh
+  environment, so 1e-8 is marginally tight rather than generous. The comment in `check.py`
+  now says so.
 
   Second, and directly relevant to §1.4: Tier 1's movement (5e-13 to 5e-12 eV in the QP
   energies) sits **30–270x above** that scatter. So the re-record is *evidence*, not just
