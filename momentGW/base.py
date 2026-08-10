@@ -385,6 +385,13 @@ class BaseGW(Base):
         expensive high-order solves. If the cap is reached without meeting the
         tolerance the calculation reports it as unconverged. `None` uses
         `nmom_max` exactly as given. Default value is `None`.
+    closure_spread : bool, optional
+        If `True`, re-realize the self-energy with a Gauss-Radau closure in place
+        of the natural Gauss truncation and report how far the frontier moves.
+        Both are admissible realizations of the same moments, so the spread is an
+        independent indicator of how much the truncation is still deciding - it
+        does not reuse the moment-order differencing. It is an indicator and not
+        a bound; see `momentGW.closure`. Default value is `False`.
     eta0_check_refinement : bool, optional
         If `True`, repeat the `"hht"` zeroth moment with four more poles
         and record the difference as a secondary regression signal. Not
@@ -435,6 +442,7 @@ class BaseGW(Base):
         eta0_check_refinement=False,
         moment_order_convergence=False,
         nmom_max_tol=None,
+        closure_spread=False,
         optimise_chempot=False,
         fock_loop=False,
         fock_opts=OrderedDict(

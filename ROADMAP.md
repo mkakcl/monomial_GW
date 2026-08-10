@@ -434,9 +434,30 @@ below.
 
 ### 3.4 Closure and spectral diagnostics
 
-- [ ] Compare independent admissible closures, such as Gauss and Radau, as a
-  truncation-error indicator.
-- [ ] Do not label closure spread a rigorous QP bound without a supporting theorem.
+- [x] Compare independent admissible closures. `closure_spread` (default `False`)
+  re-realizes the self-energy with a Gauss-Radau rule in place of the natural Gauss
+  truncation and reports how far the frontier moves. Both conserve the moments that were
+  supplied - Gauss to order `2K - 1`, Radau to `2K - 2`, validated - and differ only in
+  what they assume about the ones that were not. Implemented entirely here: the recurrence
+  exposes its Jacobi blocks, so the Gauss rule can be rebuilt from them bit-identically and
+  re-closed, with no change to Dyson and no pin move.
+  **The pin is per sector, and that is not a detail.** The sectors' supports are disjoint
+  and far apart - on water/cc-pVDZ the hole runs to -40 Ha and the particle starts at
+  +1.1 - so a single shared pin, the chemical potential included, sits ~1 Ha outside one
+  of them and inflates the spread about sixfold. Each sector is pinned just outside its own
+  edge, 1% of the inter-sector gap; the spread is flat over that region (-0.196, -0.205,
+  -0.224 eV at 0.005, 0.02, 0.05 Ha) and inflates once the pin sits well off the edge
+  (-1.69 eV at 0.6 Ha), where the rule spends a node on empty space.
+  **It earns its place by disagreeing.** Against the `m` versus `m - 2` estimate on
+  water/cc-pVDZ the two track to a factor of 1.7-2.9 at `nmom_max` 3 to 9, then diverge at
+  11: differencing says 0.016 eV, the closure says 0.197 eV. The frontier moves 42 meV at
+  the next order, so the differencing was fooled by the non-monotonic shift and understated
+  the error. That is the case a single indicator cannot catch.
+- [x] Do not label closure spread a rigorous QP bound. The Gauss/Radau bracket holds for
+  an integral of a function with derivatives of constant sign; a quasiparticle energy from
+  an upfolded eigenproblem is not one, and no theorem here covers that step. The record
+  carries `is_a_bound: False`, the log line says "indicator, not a bound", the module
+  docstring states the gap, and a test asserts the flag - so it cannot quietly be promoted.
 - [ ] Validate frontier IP/EA separately from deep-state largest-overlap labels.
 - [ ] Add a spectral-function comparison against an untruncated small-system oracle
   where satellites or deep states are reported.

@@ -2,9 +2,11 @@
 
 import numpy as np
 from dyson import MBLSE, Lehmann, Spectral
+from dyson import util as dyson_util
 
 from momentGW import energy, logging, thc, util
 from momentGW.base import BaseGW
+from momentGW.closure import gauss_radau_jacobi
 from momentGW.fock import FockLoop, search_chempot
 from momentGW.ints import Integrals
 from momentGW.rpa import dRPA
@@ -423,12 +425,47 @@ class GW(BaseGW):
 
         return integrals
 
-    def _realize_frontier(self, se_moments_hole, se_moments_part, se_static):
+    @staticmethod
+    def _radau_self_energy(solver, tau):
+        """Re-close a solved recurrence with a node pinned at `tau`.
+
+        The block Lanczos recurrence leaves the truncation freedom in its last Jacobi
+        block. Rebuilding the rule from the solver's own blocks with that block modified
+        gives a second admissible realization of the same moments, one order lower.
+
+        Parameters
+        ----------
+        solver : dyson.MBLSE
+            Solver, after `kernel` has been called.
+        tau : float
+            Energy to pin a node at.
+
+        Returns
+        -------
+        self_energy : dyson.Lehmann
+            The Gauss-Radau realization.
+        """
+        iteration = (
+            solver.max_cycle if solver.max_cycle_achieved is None else solver.max_cycle_achieved
+        )
+        nphys = solver.nphys
+        jacobi = dyson_util.build_block_tridiagonal(
+            [solver.on_diagonal[i] for i in range(iteration + 2)],
+            [solver.off_diagonal[i] for i in range(iteration + 1)],
+            None,
+        )[nphys:, nphys:]
+        jacobi = gauss_radau_jacobi(jacobi, nphys, tau)
+        energies, rotated = dyson_util.eig_lr(jacobi, hermitian=True)
+        couplings = np.atleast_2d(solver.off_diagonal[0]) @ rotated[0][:nphys]
+        return Lehmann(energies, couplings)
+
+    def _realize_frontier(self, se_moments_hole, se_moments_part, se_static, closure_tau=None):
         """Realize a moment set and read its frontier, without self-consistency.
 
-        Used only by the moment-order convergence estimate, which needs two orders
-        treated identically; the diagnostics are switched off because the frontier does
-        not depend on them and they are the expensive part of a realization.
+        Used by the moment-order convergence estimate, which needs two orders treated
+        identically, and by the closure comparison. The diagnostics are switched off
+        because the frontier does not depend on them and they are the expensive part of
+        a realization.
 
         Parameters
         ----------
@@ -436,6 +473,12 @@ class GW(BaseGW):
             Moments of the hole and particle self-energy.
         se_static : numpy.ndarray
             Static part of the self-energy.
+        closure_tau : sequence of float, optional
+            If given, one pin energy per sector, hole first. Each sector is closed with a
+            Gauss-Radau rule pinned there instead of the natural Gauss truncation. The two
+            must differ: the sectors' supports are disjoint and far apart, so a single
+            shared pin lands well outside one of them and distorts it. Default value is
+            `None`.
 
         Returns
         -------
@@ -451,7 +494,15 @@ class GW(BaseGW):
             solver.kernel()
             solvers.append(solver)
 
-        se = Spectral.combine_for_self_energy(*(s.result for s in solvers)).get_self_energy()
+        if closure_tau is None:
+            se = Spectral.combine_for_self_energy(*(s.result for s in solvers)).get_self_energy()
+        else:
+            parts = [
+                self._radau_self_energy(solver, tau) for solver, tau in zip(solvers, closure_tau)
+            ]
+            se = parts[0].copy()
+            for part in parts[1:]:
+                se = se.concatenate(part)
         fock_loop = FockLoop(self, se=se, **self.fock_opts)
         gf, nelec_error = fock_loop.solve_dyson(se_static, se=se)
 
@@ -771,6 +822,89 @@ class GW(BaseGW):
             "dominant": ranked[0][0] if ranked else None,
         }
 
+    #: Where to pin the Gauss-Radau node, as a fraction of the gap between the two
+    #: sectors' supports, measured outward from each sector's own edge. The spread is
+    #: stable for small values and inflates once the pin sits appreciably off the edge,
+    #: because the rule then spends a node on empty space: measured on water/cc-pVDZ at
+    #: `nmom_max = 7` it is -0.196, -0.205, -0.224 eV for pins 0.005, 0.02 and 0.05 Ha
+    #: outside the edge, and -1.69 eV at 0.6 Ha. This sits inside that plateau.
+    CLOSURE_PIN_FRACTION = 0.01
+
+    def closure_spread_estimate(self, se_moments_hole, se_moments_part, se_static, gf):
+        """Compare two admissible closures of the same moments.
+
+        A finite moment sequence does not determine a measure. The natural Gauss
+        truncation and a Gauss-Radau rule pinned at the edge of each sector's support
+        both conserve the moments that were supplied and differ only in what they assume
+        about the ones that were not, so the distance between the frontiers they give
+        indicates how much the truncation is still deciding.
+
+        This is independent of the moment-order estimate, which differences two orders of
+        the *same* closure. Having two routes matters because that one relies on a single
+        difference and the shift is not monotonic in the order.
+
+        Parameters
+        ----------
+        se_moments_hole, se_moments_part : numpy.ndarray
+            Moments of the hole and particle self-energy.
+        se_static : numpy.ndarray
+            Static part of the self-energy.
+        gf : dyson.Lehmann
+            Green's function from the Gauss closure.
+
+        Returns
+        -------
+        record : dict or None
+            The two frontiers, the spread, and where each node was pinned. `None` if the
+            sectors do not leave a gap to pin in.
+
+        Notes
+        -----
+        Not a bound. Gauss and Gauss-Radau bracket an integral of a function whose
+        derivatives have constant sign, which a quasiparticle energy from an upfolded
+        eigenproblem is not; the roadmap asks that this not be called a bound without a
+        theorem covering that step, and there is not one here.
+
+        The two sectors are pinned separately. Their supports are disjoint and far apart -
+        on water/cc-pVDZ the hole runs to -40 Ha while the particle starts at +1.1 - so a
+        single shared pin, the chemical potential included, lands nearly 1 Ha outside one
+        of them and distorts it: measured, that gives a spread six times larger than
+        pinning each sector at its own edge.
+        """
+        edges = []
+        for moments in (se_moments_hole, se_moments_part):
+            solver = MBLSE(
+                se_static, np.array(moments), **dict(self.dyson_opts, calculate_errors=False)
+            )
+            solver.kernel()
+            energies = np.real(solver.result.get_self_energy().energies)
+            edges.append((float(energies.min()), float(energies.max())))
+
+        gap = edges[1][0] - edges[0][1]
+        if gap <= 0:
+            return None
+        pad = self.CLOSURE_PIN_FRACTION * gap
+        taus = (edges[0][1] + pad, edges[1][0] - pad)
+
+        radau = self._realize_frontier(
+            se_moments_hole, se_moments_part, se_static, closure_tau=taus
+        )
+        gauss = frontier_readout(gf)
+
+        record = {
+            "pins": [float(t) for t in taus],
+            "sector_edges": [list(e) for e in edges],
+            "gap": float(gap),
+            "pin_fraction": float(self.CLOSURE_PIN_FRACTION),
+            "frontier_gauss": gauss,
+            "frontier_radau": radau,
+            "is_a_bound": False,
+        }
+        for name in ("homo", "lumo"):
+            if name in gauss and name in radau:
+                record[f"{name}_spread"] = float(gauss[name] - radau[name])
+        return record
+
     def solve_dyson(self, se_moments_hole, se_moments_part, se_static, integrals=None):
         """Solve the Dyson equation due to a self-energy resulting from a list of hole and particle
         moments, along with a static contribution.
@@ -929,6 +1063,26 @@ class GW(BaseGW):
                     f"{convergence['nmom_max_compared']})"
                 )
 
+        # A second, independent read on the same truncation. Reported, never gated: the
+        # spread is an indicator and not a bound, so it cannot decide anything.
+        closure = None
+        if self.closure_spread:
+            with logging.with_modifiers(status="Comparing closures", timer="Closure spread"):
+                closure = self.closure_spread_estimate(
+                    se_moments_hole, se_moments_part, se_static, gf
+                )
+            if closure is None:
+                logging.write("Closure spread:  sectors leave no gap to pin a node in")
+            else:
+                parts = []
+                for name in ("homo", "lumo"):
+                    if f"{name}_spread" in closure:
+                        ev = abs(closure[f"{name}_spread"]) * 27.211386245988
+                        parts.append(
+                            f"{name.upper()} [{logging.rate(ev, 1e-3, 1e-1)}]{ev:.3e}[/] eV"
+                        )
+                logging.write(f"Closure spread (indicator, not a bound):  {' , '.join(parts)}")
+
         # Record the gates the calculation is judged against, so that the caller can
         # ask whether it converged instead of assuming that it did
         gates = {
@@ -949,6 +1103,7 @@ class GW(BaseGW):
             "converged": all(gates.values()),
             "moment_order_convergence": convergence,
             "moment_order": order_record,
+            "closure_spread": closure,
         }
 
         return gf, se

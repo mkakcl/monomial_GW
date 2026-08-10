@@ -410,6 +410,42 @@ class Test_GW(unittest.TestCase):
         self.assertTrue(any("moment_truncation" in item for item in budget["unquantified"]))
         self.assertTrue(any("compression" in item for item in budget["unquantified"]))
 
+    def test_closure_spread_off_by_default(self):
+        """It is a second realization, so it is opt-in."""
+        gw = GW(self.mf)
+        gw.kernel(5)
+        self.assertIsNone(gw.dyson_diagnostics["closure_spread"])
+
+    def test_closure_spread_pins_each_sector_at_its_own_edge(self):
+        """One shared pin would land outside one sector; the two must differ."""
+        gw = GW(self.mf, closure_spread=True)
+        gw.kernel(5)
+        record = gw.dyson_diagnostics["closure_spread"]
+
+        hole_edge, particle_edge = record["sector_edges"]
+        low, high = record["pins"]
+        self.assertGreater(low, hole_edge[1])
+        self.assertLess(high, particle_edge[0])
+        self.assertLess(low, high)
+
+    def test_closure_spread_is_not_called_a_bound(self):
+        """The roadmap forbids labelling the spread a bound without a theorem."""
+        gw = GW(self.mf, closure_spread=True)
+        gw.kernel(5)
+        record = gw.dyson_diagnostics["closure_spread"]
+
+        self.assertFalse(record["is_a_bound"])
+        self.assertIn("homo_spread", record)
+
+    def test_closure_spread_is_independent_of_the_order_estimate(self):
+        """The two indicators must not be the same number by another name."""
+        gw = GW(self.mf, closure_spread=True, moment_order_convergence=True)
+        gw.kernel(5)
+        closure = gw.dyson_diagnostics["closure_spread"]["homo_spread"]
+        differencing = gw.dyson_diagnostics["moment_order_convergence"]["homo_shift"]
+
+        self.assertNotAlmostEqual(closure, differencing, 6)
+
     def test_regression_fock_loop_nmom3(self):
         # Dyson's `Spectral` is shared with the Fock loop, which the recorded baseline
         # never exercises: `baseline/run.py` stores `fock_loop` as provenance but does not
