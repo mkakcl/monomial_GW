@@ -226,10 +226,8 @@ class dTDA(BaseSE):
         # Setup dependent on diagonal SE
         q0, q1 = self.mpi_slice(mo_energy_g.size)
         if self.gw.diagonal_se:
-            pq = "p"
             fproc = lambda x: np.diag(x)
         else:
-            pq = "pq"
             fproc = lambda x: x
 
         # Initialise the moments
@@ -242,25 +240,50 @@ class dTDA(BaseSE):
             eta_orders = np.arange(self.nmom_max + 1)
         eta_orders = np.asarray(eta_orders)
 
+        # Every output order contracts the same `eta` against a different set of weights:
+        # `sum_{k,t} f[t] energy[k]^(n-t) eta[k,t,...]`. Written as one `einsum` per order and
+        # sector that was two problems. The summation indices appear in all three operands, so
+        # `np.einsum` cannot express it as a `tensordot` even with `optimize=True` and it ran in
+        # the unblocked, single-threaded kernel; and each order re-selected `eta[mask]`, which is
+        # a fancy-index copy of an array that is 147 MB on benzene/cc-pVTZ, inside the loop over
+        # a mask that does not depend on the loop variable. Folding the weights into one operand
+        # leaves a single matrix product, and stacking the orders into its rows means `eta` is
+        # read once per call rather than twice per order.
+        occupied = mo_occ_g[q0:q1] > 0
+        virtual = mo_occ_g[q0:q1] == 0
+        energies = mo_energy_g[q0:q1]
+        nk = energies.size
+        nt = eta_orders.shape[0]
+
+        weights = []
+        targets = []
         for n in range(self.nmom_max + 1):
-            if eta_orders.shape[0] == 1 and eta_orders[0] > n:
-                pass
-            else:
-                # Get the binomial coefficients
-                fp = scipy.special.binom(n, eta_orders)
-                fh = fp * (-1) ** eta_orders
+            if nt == 1 and eta_orders[0] > n:
+                continue
 
-                # Construct the occupied moments for this order
-                if np.any(mo_occ_g[q0:q1] > 0):
-                    eo = np.power.outer(mo_energy_g[q0:q1][mo_occ_g[q0:q1] > 0], n - eta_orders)
-                    to = util.einsum(f"t,kt,kt{pq}->{pq}", fh, eo, eta[mo_occ_g[q0:q1] > 0])
-                    moments_occ[n] += fproc(to)
+            # Get the binomial coefficients
+            fp = scipy.special.binom(n, eta_orders)
+            fh = fp * (-1) ** eta_orders
 
-                # Construct the virtual moments for this order
-                if np.any(mo_occ_g[q0:q1] == 0):
-                    ev = np.power.outer(mo_energy_g[q0:q1][mo_occ_g[q0:q1] == 0], n - eta_orders)
-                    tv = util.einsum(f"t,ct,ct{pq}->{pq}", fp, ev, eta[mo_occ_g[q0:q1] == 0])
-                    moments_vir[n] += fproc(tv)
+            # The powers are formed only for the orbitals a sector actually owns, as they were
+            # when this was two contractions. `n - eta_orders` goes negative once the order
+            # exceeds `n`, and a zero energy raised to it is an infinity that the binomial
+            # coefficient would then multiply by zero.
+            for mask, factor, target in ((occupied, fh, moments_occ), (virtual, fp, moments_vir)):
+                if not np.any(mask):
+                    continue
+                weight = np.zeros((nk, nt))
+                weight[mask] = factor * np.power.outer(energies[mask], n - eta_orders)
+                weights.append(weight)
+                targets.append((target, n))
+
+        if weights:
+            # One GEMM for every order and sector at once, against a flat view of `eta`.
+            contracted = np.reshape(weights, (len(weights), nk * nt)) @ np.reshape(
+                eta, (nk * nt, -1)
+            )
+            for value, (target, n) in zip(contracted, targets):
+                target[n] += fproc(np.reshape(value, eta.shape[2:]))
 
         # Sum over all processes
         moments_occ = mpi_helper.allreduce(moments_occ)

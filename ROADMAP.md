@@ -467,8 +467,22 @@ this roadmap:
   1.45x on a benzene/cc-pVTZ calculation at `nmom_max = 7`**, with the frontier moving
   1e-15 to 2e-13 eV and the realization residuals improving 4-26x. Full analysis, and what
   is left, in [`DIAGONALISATION_ROADMAP.md`](DIAGONALISATION_ROADMAP.md).
-- [ ] Refactor convolution so moment orders accumulate locally and perform one final
-  MPI reduction and symmetrization instead of reducing full stacks repeatedly.
+- [x] Refactor convolution. ~~so moment orders accumulate locally and perform one final
+  MPI reduction and symmetrization instead of reducing full stacks repeatedly~~ - the
+  reduction was not where the time went. `convolve` already all-reduces once at the end,
+  which is a no-op on one rank; the 9.4% measured above was local. Two things caused it,
+  both in the same loop. The contraction `sum_{k,t} f[t] e[k]^(n-t) eta[k,t,pq]` was one
+  `einsum` whose summation indices appear in all three operands, so NumPy cannot express it
+  as a `tensordot` even with `optimize=True` and it ran in the unblocked, single-threaded
+  kernel; and each output order re-selected `eta[mask]`, a fancy-index copy of an array that
+  is 147 MB on benzene/cc-pVTZ, inside a loop over a mask that does not depend on the loop
+  variable. Folding the weights into one operand leaves a matrix product, and stacking the
+  orders into its rows reads `eta` once per call rather than twice per order. **23x** on the
+  full sweep at `nmo = 264` (6.511 s to 0.283 s), 8.6x at `nmo = 114`; `convolve` leaves the
+  profile entirely. Identical arithmetic in a different summation order: 52/52 baseline
+  cases unchanged, frontier moving at most 3.3e-11 eV with a median of 1.0e-13 eV, and the
+  realization residuals scattering in both directions at the 1e-15 floor rather than
+  degrading. Re-recorded in the same commit.
 - [ ] Batch several HHT Gram reductions or overlap nonblocking reductions with local
   work, subject to memory profiling.
 - [x] Add a native no-compression integral-transform path instead of multiplying each

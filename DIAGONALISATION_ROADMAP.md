@@ -543,8 +543,10 @@ holds at ~1e-13 eV.
 moment construction, and two of them already have unchecked entries in `ROADMAP.md`
 Milestone 4:
 
-6. **`convolve`** — 9.4% of a run, against the 1% its own milestone records. The refactor
-   is already specified there; only its priority was wrong.
+6. ~~**`convolve`** — 9.4% of a run.~~ **Done** — 23x on the full sweep at `nmo = 264`, and
+   it leaves the profile entirely. The milestone's written refactor targeted the MPI
+   reduction, which is a no-op on one rank; the cost was an unfactorable `einsum` plus a
+   fancy-index copy of `eta` repeated once per output order. See `ROADMAP.md` Milestone 4.
 7. **`build_se_moments`** — 21.5%, the single largest item in the calculation, and the
    stage Milestone 4 has already optimised once.
 8. **The `ascontiguousarray` layout copy** — 3.3%, fix already named (emit the layout from
