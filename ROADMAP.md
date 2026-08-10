@@ -337,14 +337,29 @@ formed; no particle-hole squared matrix is allowed.
 
 ### 3.1 End-to-end error budget
 
-- [ ] Track separate contributions from eta0 approximation, Cholesky solves, auxiliary
-  compression, response recurrence, self-energy convolution, MBLSE realization, and
-  particle-number fitting.
-- [ ] Derive or measure the amplification of an eta0 perturbation at each requested
-  response and self-energy moment order.
+- [x] Track separate contributions. `gw.error_budget()` gathers every source that is
+  measured anywhere - eta0, its Cholesky solves, the MBLSE realization per sector and
+  order, particle-number fitting, and moment truncation - into one report, each with its
+  native value and unit, and converts to eV on the frontier only where an amplification
+  has been measured. Auxiliary compression, the response recurrence and the self-energy
+  convolution are *named as unquantified* rather than omitted: compression records neither
+  rank nor discarded norm (Milestone 4 holds that item), and the two contractions are
+  exact, so their error is summation order, which Milestone 4 measured at 5.2e-8 eV on the
+  deep states but never attributed per stage.
+  Measured on water/cc-pVDZ at `nmom_max = 7`: truncation 7.0e-2 eV against eta0 6.0e-13 eV,
+  eleven orders apart. A budget listing only the numerical terms would have described the
+  wrong error entirely.
+- [x] Derive or measure the amplification of an eta0 perturbation. Done under Milestone
+  2.4 and recorded there: the dd-moment recurrence does not amplify it, and the frontier
+  moves by 30-300x the scalar error in eV. `error_budget` uses the upper end, so the eta0
+  entry is a bound rather than an estimate.
 - [ ] Select the eta0 tolerance and pole count from the requested final moment/QP
   tolerance.
-- [ ] Report errors per sector and order; do not reduce all information to one scalar.
+- [x] Report errors per sector and order; do not reduce all information to one scalar.
+  The realization entry carries the per-order residuals and the conserved order for each
+  sector, and the report deliberately has no total: the contributions are in different
+  units and only some have a measured path to the frontier, so summing them would invent
+  the missing conversions. A test pins the absence of a `total`.
 
 ### 3.2 Scaled or modified moments
 
