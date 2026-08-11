@@ -428,9 +428,17 @@ below.
   residual is already reported per sector and order by 1.1, at the realized order, and is
   a realization-fidelity measure rather than an order-convergence one; it stays at ~1e-15
   throughout (see 3.3's opening note).
-- [ ] Step down automatically when the next block fails the delivered-moment or PSD
-  gate.
-- [ ] Report requested, built, conserved, and realized orders separately.
+- [x] Step down automatically when the next block fails the delivered-moment or PSD
+  gate. Delivered by 1.3 and unchanged since: the recurrence stops at the last order it
+  could complete, `order_reduced` records it, the realization gate fails and `converged`
+  turns false. Verified on lithium-hydride at `nmom_max = 7`, where the hole sector steps
+  from `max_cycle` 3 to 2 and the calculation reports itself unconverged.
+- [x] Report requested, built, conserved, and realized orders separately. Delivered by 1.1
+  and 1.3; `realization_record` carries all four per sector under
+  `moments_supplied` (built), `nmom_conserved_requested`, `nmom_conserved_achieved`
+  (conserved) and `n_poles` with `max_cycle_achieved` (realized). On the lithium-hydride
+  case above the hole reads 8 built, 8 requested, 6 conserved, 76 poles realized, against
+  8/8/8/95 for the particle.
 
 ### 3.4 Closure and spectral diagnostics
 
