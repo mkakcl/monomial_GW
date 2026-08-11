@@ -11,19 +11,21 @@ than as a large shift. And there are two independent truncation indicators - dif
 `m` against `m - 2`, and the spread between the Gauss and Gauss-Radau closures - which
 matters because the first rests on a single difference of a sequence that is not monotonic.
 
-A shortfall in the conserved order has two causes that mean opposite things, and the
-`limit` column separates them by the reconstructed-moment residual:
+**There is exactly one way this code steps down**, and it is worth stating plainly because
+an earlier version of this study got it wrong. `MBLSE.kernel` sets `max_cycle_achieved` in
+one place only, catching `NotPositiveSemiDefiniteError` from the next block's square root
+(`dyson/solvers/static/_mbl.py:471`). So every shortfall is a **PSD failure** - the moments
+cannot support a causal measure at that order - and there is no rank-versus-arithmetic
+dichotomy to classify. Importing one from a code that gates on a Gram factorisation instead
+produced two false readings: the reconstructed-moment residual is measured at the *achieved*
+order, which the failure never touched, so it reports ~1e-15 for every step-down and can
+never indicate the cause.
 
-``rank``
-    The sector's support is exhausted. The rule reproduces its own moments to ~1e-15 and
-    there is nothing left for higher orders to conserve. Not a failure.
-``arith``
-    float64 has run out of digits. The residual degrades by decades.
-
-Where a shortfall is called ``rank`` this also re-runs it with the scale-aware support
-policy tightened, because the two are distinguishable: a genuine rank limit does not move
-when the policy changes, while a policy-imposed one does. The distinction was open after
-the benzene sweep of 2026-08-10.
+What the PSD gate costs is measurable, and is measured here. Loosening `neg_atol` and
+`neg_rtol` lets the recurrence accept the offending direction and continue; the study
+reports the order that buys and the residual it costs, so the trade is visible rather than
+asserted. Note that it is `neg_atol`/`neg_rtol` that govern this, not `atol`/`rtol` - the
+latter set the support mask and provably cannot move the step-down.
 
 A study, not part of the recorded baseline set: re-run when the claims it supports are in
 question, not by `baseline.check`.
@@ -42,17 +44,11 @@ import io
 import numpy as np
 
 import momentGW
+from baseline import frontier as frontier_lib
 from baseline import systems as systems_module
 from baseline.run import build_mean_field
 from momentGW.gw import GW
 from momentGW.rpa import dRPA
-
-HARTREE2EV = 27.211386245988
-
-#: Residual below which a shortfall is the sector's support running out rather than
-#: float64 running out of digits. The two sit decades apart, so the exact value is not
-#: delicate; see the module docstring.
-RANK_RESIDUAL_MAX = 1e-13
 
 #: Below this quasiparticle weight the pole carrying the reference orbital is a satellite
 #: rather than a quasiparticle, and the frontier energy is tracking the wrong thing. The
@@ -72,7 +68,7 @@ def _binding(realization):
     return sector, record, residual
 
 
-def _row(gw, order):
+def _row(gw, order, nelectron):
     """Read one row of the table off a solved calculation."""
     diagnostics = gw.dyson_diagnostics
     sector, record, residual = _binding(diagnostics["realization"])
@@ -80,13 +76,6 @@ def _row(gw, order):
     conserved = record["nmom_conserved_achieved"]
     shortfall = requested - conserved
 
-    limit = "-"
-    if shortfall:
-        limit = "rank" if residual < RANK_RESIDUAL_MAX else "arith"
-
-    frontier = diagnostics["moment_order_convergence"]
-    closure = diagnostics["closure_spread"]
-    gf = gw.gf.physical(weight=0.1)
     row = {
         "order": order,
         "built": record["moments_supplied"],
@@ -95,42 +84,80 @@ def _row(gw, order):
         "shortfall": shortfall,
         "binding": sector,
         "residual": residual,
-        "limit": limit,
+        # There is one step-down path and it is a PSD failure; see the module docstring.
+        "limit": "psd" if shortfall else "-",
         "nelec_error": float(diagnostics["nelec_error"]),
+        "nelec_tol": float(diagnostics["nelec_tol"]),
+        "gates": dict(diagnostics["gates"]),
+        "converged": bool(diagnostics["converged"]),
         "differencing_ev": None,
         "closure_ev": None,
+        "homo_ev": None,
+        "homo_z": None,
+        "homo_mo": None,
     }
-    for name, sub, index in (("homo", gf.occupied(), -1), ("lumo", gf.virtual(), 0)):
-        if not sub.naux:
-            continue
-        couplings = sub.couplings[..., index]
-        row[f"{name}_ev"] = float(np.real(sub.energies[index])) * HARTREE2EV
-        row[f"{name}_z"] = float(np.dot(couplings, couplings).real)
-        row[f"{name}_mo"] = int(np.argmax(np.abs(couplings)))
+
+    # The crossing-safe readout: Aufbau counting over the correlated multiplets, which does
+    # not depend on the reference ordering. `frontier_readout` in the solver is index-based
+    # and is what the two indicator columns use, so a level crossing is the one case where
+    # this column and those disagree - which is the point of reading it this way here.
+    try:
+        readout = frontier_lib.readouts(gf_energies(gw), gf_couplings(gw), nelectron)
+    except frontier_lib.SpectrumError as error:
+        row["frontier_error"] = str(error)
+    else:
+        homo = readout["frontier"]["homo"]
+        row["homo_ev"] = readout["homo_ha"] * frontier_lib.EV
+        row["homo_z"] = homo["weight_per_state"]
+        row["homo_mo"] = homo["dominant_mo_index"]
+        row["lumo_ev"] = readout["lumo_ha"] * frontier_lib.EV
+
+    frontier = diagnostics["moment_order_convergence"]
+    closure = diagnostics["closure_spread"]
     if frontier is not None and "homo_shift" in frontier:
-        row["differencing_ev"] = abs(frontier["homo_shift"]) * HARTREE2EV
+        row["differencing_ev"] = abs(frontier["homo_shift"]) * frontier_lib.EV
         row["crossed"] = bool(frontier.get("homo_orbital_changed"))
     if closure is not None and "homo_spread" in closure:
-        row["closure_ev"] = abs(closure["homo_spread"]) * HARTREE2EV
+        row["closure_ev"] = abs(closure["homo_spread"]) * frontier_lib.EV
+        row["closure_crossed"] = bool(closure.get("homo_orbital_changed"))
     return row
 
 
-def _policy_probe(mf, moments, integrals, order, tighten=1e-4):
-    """Re-run a rank-limited order with the support policy tightened.
+def gf_energies(gw):
+    """Pole energies of the correlated Green's function."""
+    return np.asarray(gw.gf.energies)
 
-    A genuine rank limit is the sector's support running out and does not move when the
-    scale-aware `matrix_power` policy changes. A policy-imposed one does.
+
+def gf_couplings(gw):
+    """Couplings of the correlated Green's function."""
+    return np.asarray(gw.gf.couplings)
+
+
+def _psd_probe(mf, moments, integrals, order, loosen=1e4):
+    """Measure what the PSD gate is costing at a stepped-down order.
+
+    Loosening `neg_atol`/`neg_rtol` lets the recurrence accept the direction it refused,
+    so the order it then reaches, and the residual that order carries, say what the gate
+    bought. These are the tolerances that govern the step-down; `atol`/`rtol` set the
+    support mask and cannot move it.
+
+    Returns
+    -------
+    conserved : int
+        Order conserved with the gate loosened.
+    residual : float
+        Reconstructed-moment residual at that order.
     """
     gw = GW(mf, polarizability="drpa")
     gw.dyson_opts = dict(
         gw.dyson_opts,
-        atol=gw.dyson_opts["atol"] * tighten,
-        rtol=gw.dyson_opts["rtol"] * tighten,
+        neg_atol=gw.dyson_opts["neg_atol"] * loosen,
+        neg_rtol=gw.dyson_opts["neg_rtol"] * loosen,
     )
     with contextlib.redirect_stdout(io.StringIO()):
         gw.kernel(nmom_max=order, moments=moments, integrals=integrals)
-    _, record, _ = _binding(gw.dyson_diagnostics["realization"])
-    return record["nmom_conserved_achieved"]
+    _, record, residual = _binding(gw.dyson_diagnostics["realization"])
+    return record["nmom_conserved_achieved"], residual
 
 
 def run(name, cap, xc="pbe"):
@@ -148,10 +175,11 @@ def run(name, cap, xc="pbe"):
         ).kernel()
 
     print(f"\n### {name} / {system.basis} / {xc}   nmo={mf.mo_occ.size}   cap nmom_max={cap}")
+    nelectron = mf.mol.nelectron
     print(
         f"{'K':>3s} {'built':>5s} {'req':>4s} {'cons':>5s} {'short':>6s} {'residual':>10s} "
         f"{'limit':>6s} {'HOMO/eV':>10s} {'Z':>5s} {'MO':>3s} {'dHOMO/meV':>10s} "
-        f"{'diff/meV':>9s} {'closure/meV':>12s} {'dN':>9s}"
+        f"{'diff/meV':>9s} {'closure/meV':>12s} {'dN':>9s} {'gates':>7s}"
     )
     rows, previous = [], None
     for order in range(1, cap + 1, 2):
@@ -167,37 +195,60 @@ def run(name, cap, xc="pbe"):
                 moments=tuple(m[: order + 1] for m in moments),
                 integrals=integrals,
             )
-        row = _row(gw, order)
+        row = _row(gw, order, nelectron)
+        rows.append(row)
+        if row["homo_ev"] is None:
+            print(
+                f"{row['order']:3d} {row['built']:5d} {row['requested']:4d} "
+                f"{row['conserved']:5d} {row['shortfall']:6d} {row['residual']:10.2e} "
+                f"{row['limit']:>6s}   no frontier: {row.get('frontier_error', '')}"
+            )
+            continue
         step = "" if previous is None else f"{(row['homo_ev'] - previous) * 1000:10.2f}"
         previous = row["homo_ev"]
-        rows.append(row)
         diff = "-" if row["differencing_ev"] is None else f"{row['differencing_ev'] * 1000:9.2f}"
         clos = "-" if row["closure_ev"] is None else f"{row['closure_ev'] * 1000:12.2f}"
+        failed = [k for k, v in row["gates"].items() if not v]
+        gates = "ok" if not failed else ",".join(failed)
         print(
             f"{row['order']:3d} {row['built']:5d} {row['requested']:4d} {row['conserved']:5d} "
             f"{row['shortfall']:6d} {row['residual']:10.2e} {row['limit']:>6s} "
             f"{row['homo_ev']:10.5f} {row['homo_z']:5.3f} {row['homo_mo']:3d} {step:>10s} "
-            f"{diff:>9s} {clos:>12s} {row['nelec_error']:9.2e}"
+            f"{diff:>9s} {clos:>12s} {row['nelec_error']:9.2e} {gates:>7s}"
         )
 
-    limited = [r for r in rows if r["limit"] == "rank"]
-    if limited:
-        first = limited[0]
-        tightened = _policy_probe(
-            mf, tuple(m[: first["order"] + 1] for m in moments), integrals, first["order"]
+    # Probe every distinct stepped-down order, not just the first: the shortfall grows
+    # with the order and a verdict read off the lowest one does not cover the rest.
+    seen = set()
+    for row in (r for r in rows if r["shortfall"]):
+        if row["conserved"] in seen:
+            continue
+        seen.add(row["conserved"])
+        reached, residual = _psd_probe(
+            mf, tuple(m[: row["order"] + 1] for m in moments), integrals, row["order"]
         )
-        verdict = (
-            "policy, not support: tightening the support policy recovers order"
-            if tightened > first["conserved"]
-            else "genuine: unchanged when the support policy is tightened"
-        )
+        if reached > row["conserved"]:
+            verdict = f"the PSD gate is binding; it costs {reached - row['conserved']} orders"
+        elif reached < row["conserved"]:
+            verdict = "loosening the gate made it worse"
+        else:
+            verdict = "not the PSD tolerance: unchanged when it is loosened"
         print(
-            f"  rank limit at K={first['order']} conserved {first['conserved']}; "
-            f"with atol/rtol x1e-4 it conserves {tightened} -> {verdict}"
+            f"  K={row['order']:2d} conserved {row['conserved']} at residual "
+            f"{row['residual']:.2e}; with neg_atol/neg_rtol x1e4 it conserves {reached} at "
+            f"{residual:.2e} -> {verdict}"
         )
     if any(r.get("crossed") for r in rows):
-        print("  NOTE: the dominant frontier orbital changed at least once in this sweep")
-    worst_z = min(r["homo_z"] for r in rows if "homo_z" in r)
+        print("  NOTE: the dominant frontier orbital changed between consecutive orders")
+    if any(r.get("closure_crossed") for r in rows):
+        print(
+            "  NOTE: the two closures disagreed on the frontier state at least once, so "
+            "the spread there is between different states"
+        )
+    weights = [r["homo_z"] for r in rows if r.get("homo_z") is not None]
+    if not weights:
+        return rows
+    worst_z = min(weights)
     if worst_z < QUASIPARTICLE_WEIGHT_MIN:
         print(
             f"  WARNING: quasiparticle weight falls to {worst_z:.3f}, below "

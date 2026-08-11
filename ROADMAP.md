@@ -370,7 +370,10 @@ formed; no particle-hole squared matrix is allowed.
 - [ ] Evaluate a direct Chebyshev/modified-moment plus block-Jacobi backend for orders
   where raw monomial Hankel matrices lose usable precision. **Premise unmeasured on this
   path** (2026-08-10): no such order was found up to `nmom_max = 15`, from H2 to
-  benzene/cc-pVTZ, with residuals at 5-8e-15 throughout and every step-down rank-limited.
+  benzene/cc-pVTZ, with residuals at 5-8e-15 throughout `[corrected 2026-08-11: the step-downs were
+  described as rank-limited, which was read off a classifier that could not see the cause.
+  Every step-down in this code is a PSD failure. The evidence for parking 3.2 is the
+  residual at the orders that complete, which is unaffected]`.
   MBLSE runs a block Lanczos recurrence and never forms a raw monomial Hankel matrix, which
   is likely why; `mkakcl/chebyshev-gw`, which Cholesky-factorises a Gram, is arith-limited
   at 13-27 depending on the system. Independent cross-check: lithium-hydride rank-limits at
@@ -468,7 +471,10 @@ below.
   So the spread is a **conservative one-sided signal, not an error estimate**. It can say
   "not converged" and it caught a case where the differencing was fooled, but it cannot
   certify convergence and must not be read as a magnitude. Whether the floor is intrinsic to
-  pinning a node at a support edge or an artefact of this construction is open.
+  pinning a node at a support edge or an artefact of this construction is open; one
+  candidate is now ruled out, since the two closures pick the same frontier state on water
+  and lithium-hydride at every order, and the estimate records the comparison so a case
+  where they do not - ozone - is flagged rather than silently differenced.
 - [x] Do not label closure spread a rigorous QP bound. The Gauss/Radau bracket holds for
   an integral of a function with derivatives of constant sign; a quasiparticle energy from
   an upfolded eigenproblem is not one, and no theorem here covers that step. The record
@@ -480,33 +486,47 @@ below.
 
 ### Acceptance gate
 
-**Four of five pass; the first does not yet, and ozone is why.** Tables from
+**Four of five pass; the first does not, and ozone is why.** Tables from
 [`baseline/studies/order_convergence.py`](baseline/studies/order_convergence.py), swept to
-`nmom_max = 15` from one moment build per system, PBE / cc-pVDZ.
+`nmom_max = 15` from one moment build per system, PBE / cc-pVDZ. The frontier is read by
+Aufbau counting over the correlated multiplets, which survives a level crossing.
 
 - **Partly passed** - increasing supported moment order reduces the stated frontier error
-  until the predicted limit. Water falls 464 to 0.5 meV per step and then rank-limits at 14
-  conserved of 16 requested; lithium-hydride falls 789 to 0.02 meV and rank-limits at 6
-  from `nmom_max = 7` onward. Both rank limits are genuine: tightening the scale-aware
-  support policy by 1e-4 recovers no order, which settles the question the benzene sweep
-  left open. **Ozone does not converge** - it reaches `nmom_max = 15` with no shortfall at
-  all and the frontier still moving 83 meV per step, so no limit has been reached and this
-  criterion is unmet for the small-gap case. It needs a higher cap, not a fix.
-- **Passed** - no calculation silently continues after a failure. The realization,
-  particle-number and moment-order gates each turn `converged` false and are reported.
+  until the predicted limit. Water falls 464 to 0.5 meV per step, lithium-hydride 789 to
+  0.02 meV, and both then stop at a limit. **Ozone does not**: it reaches `nmom_max = 15`
+  with no shortfall at all and the frontier still moving 83 meV per step, so no limit has
+  been reached and this criterion is unmet for the small-gap case. It needs a higher cap.
+- **Passed** - no calculation silently continues after a failure. The tables carry the gate
+  states per row: every stepped-down order shows `realization` failed and `converged`
+  false, which is the criterion demonstrated rather than asserted.
 - **Passed** - the reported bounds are consistent with the observed moment errors. The
   reconstructed-moment residual sits at 2.4e-15 to 1.0e-14 across all three systems and
-  every order, and never degrades; no case is arithmetic-limited below `nmom_max = 15`.
+  every order that completes, and never degrades.
 - **Passed** - H2O, LiH and the small-gap system have documented order-convergence tables.
 - **Passed** - low-order results remain compatible with the Milestone 0 baseline: 52/52.
 
-Two findings from the tables that are not acceptance criteria but bear on reading them.
-**Lithium-hydride's frontier is a satellite**, not a quasiparticle: its weight falls to
-0.459, so the 0.02 meV convergence above says nothing about a quasiparticle energy, and the
-study warns on it. **Ozone crosses a level** between `nmom_max` 1 and 3, from reference
-orbital 9 to 11; the frontier readout records the dominant orbital, so this appears as a
-changed label rather than as a 177 meV shift. Both are 3.4's remaining item - validating
-frontier IP/EA separately from deep-state largest-overlap labels - showing up in data.
+**What the limit actually is** `[corrected 2026-08-11]`. An earlier version of this section
+classified step-downs as `rank` or `arith` by the reconstructed-moment residual and called
+them genuine. Both readings were wrong. `MBLSE.kernel` steps down in exactly one place,
+catching a PSD failure on the next block's square root, so there is no dichotomy to
+classify; and the residual is measured at the *achieved* order, which the failure never
+touched, so it reports ~1e-15 for every step-down and cannot indicate a cause. The probe
+that pronounced the limits genuine scaled `atol`/`rtol`, which set the support mask and
+provably cannot move a step-down - it returned bit-identical results.
+
+Measured with `neg_atol`/`neg_rtol`, which do govern it, the two systems differ and neither
+matches what was claimed:
+
+| system | conserved | residual | with the PSD gate loosened 1e4 | reading |
+| --- | --- | --- | --- | --- |
+| lithium-hydride, `K = 7` | 6 | 3.58e-15 | **8** at 2.22e-13 | the gate is binding; it costs 2 orders, at 60x the residual |
+| water, `K = 15` | 14 | 5.60e-15 | 14 at 5.60e-15 | not the tolerance: the direction is materially negative |
+
+**Two findings that bear on reading the tables.** Lithium-hydride's frontier is a satellite,
+weight 0.458, so its 0.02 meV convergence says nothing about a quasiparticle; the study warns
+below 0.7. Ozone crosses a level between orders 1 and 3, and its two closures disagree on
+the frontier state at least once - so part of its closure column compares different states,
+and the study now says so. Both are 3.4's remaining item showing up in data.
 
 ## Milestone 4 - Optimize the verified restricted molecular path
 

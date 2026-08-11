@@ -485,15 +485,41 @@ class GW(BaseGW):
         readout : dict
             As `frontier_readout`, plus the order the recurrence conserved.
         """
-        opts = dict(self.dyson_opts)
-        opts["calculate_errors"] = False
+        solvers = self._realize_solvers(se_moments_hole, se_moments_part, se_static)
+        return self._frontier_from_solvers(solvers, se_static, closure_tau=closure_tau)
 
+    def _realize_solvers(self, se_moments_hole, se_moments_part, se_static):
+        """Run the recurrence for both sectors, with the diagnostics off.
+
+        Separated from reading a frontier off them so that a caller wanting two closures
+        of the same moments pays for the recurrence once.
+        """
+        opts = dict(self.dyson_opts, calculate_errors=False)
         solvers = []
         for moments in (se_moments_hole, se_moments_part):
             solver = MBLSE(se_static, np.array(moments), **opts)
             solver.kernel()
             solvers.append(solver)
+        return solvers
 
+    def _frontier_from_solvers(self, solvers, se_static, closure_tau=None):
+        """Read a frontier off solved recurrences, closing them as asked.
+
+        Parameters
+        ----------
+        solvers : list of dyson.MBLSE
+            Solved recurrences, hole first.
+        se_static : numpy.ndarray
+            Static part of the self-energy.
+        closure_tau : sequence of float, optional
+            One pin energy per sector. `None` uses the natural Gauss truncation.
+
+        Returns
+        -------
+        readout : dict
+            As `frontier_readout`, plus the conserved order and the other quantities the
+            order walk carries.
+        """
         if closure_tau is None:
             se = Spectral.combine_for_self_energy(*(s.result for s in solvers)).get_self_energy()
         else:
@@ -873,12 +899,10 @@ class GW(BaseGW):
         of them and distorts it: measured, that gives a spread six times larger than
         pinning each sector at its own edge.
         """
+        solvers = self._realize_solvers(se_moments_hole, se_moments_part, se_static)
+
         edges = []
-        for moments in (se_moments_hole, se_moments_part):
-            solver = MBLSE(
-                se_static, np.array(moments), **dict(self.dyson_opts, calculate_errors=False)
-            )
-            solver.kernel()
+        for solver in solvers:
             iteration = (
                 solver.max_cycle if solver.max_cycle_achieved is None else solver.max_cycle_achieved
             )
@@ -895,16 +919,23 @@ class GW(BaseGW):
         pad = self.CLOSURE_PIN_FRACTION * gap
         taus = (edges[0][1] + pad, edges[1][0] - pad)
 
-        radau = self._realize_frontier(
-            se_moments_hole, se_moments_part, se_static, closure_tau=taus
-        )
-        gauss = frontier_readout(gf)
+        # Both frontiers must come from the same treatment or the difference is not the
+        # closure. `gf` has been through the Fock loop or the pole shift where either is
+        # on, so in that case the Gauss frontier is re-read without them rather than taken
+        # from `gf`; the sibling estimator makes the same distinction.
+        excluded = bool(self.fock_loop or self.optimise_chempot)
+        if excluded:
+            gauss = self._frontier_from_solvers(solvers, se_static)
+        else:
+            gauss = frontier_readout(gf)
+        radau = self._frontier_from_solvers(solvers, se_static, closure_tau=taus)
 
         record = {
             "pins": [float(t) for t in taus],
             "sector_edges": [list(e) for e in edges],
             "gap": float(gap),
             "pin_fraction": float(self.CLOSURE_PIN_FRACTION),
+            "self_consistent_excluded": excluded,
             "frontier_gauss": gauss,
             "frontier_radau": radau,
             "is_a_bound": False,
@@ -912,6 +943,12 @@ class GW(BaseGW):
         for name in ("homo", "lumo"):
             if name in gauss and name in radau:
                 record[f"{name}_spread"] = float(gauss[name] - radau[name])
+                # Two closures can order the frontier differently. Subtracting the
+                # energies of two different states would report a crossing as a spread,
+                # so the labels are compared and the mismatch recorded.
+                record[f"{name}_orbital_changed"] = bool(
+                    gauss.get(f"{name}_orbital") != radau.get(f"{name}_orbital")
+                )
         return record
 
     def solve_dyson(self, se_moments_hole, se_moments_part, se_static, integrals=None):
