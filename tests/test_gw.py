@@ -446,6 +446,33 @@ class Test_GW(unittest.TestCase):
 
         self.assertNotAlmostEqual(closure, differencing, 6)
 
+    def test_closure_spread_unavailable_with_a_single_block(self):
+        """One block has no leading part to pin against, so there is no second closure."""
+        gw = GW(self.mf, closure_spread=True)
+        gw.kernel(1)
+        self.assertIsNone(gw.dyson_diagnostics["closure_spread"])
+
+    def test_closure_spread_records_whether_self_consistency_was_excluded(self):
+        """Both frontiers must get the same treatment or the difference is not the closure."""
+        gw = GW(self.mf, closure_spread=True)
+        gw.kernel(5)
+        self.assertFalse(gw.dyson_diagnostics["closure_spread"]["self_consistent_excluded"])
+
+        loop = GW(self.mf, closure_spread=True, fock_loop=True)
+        loop.kernel(5)
+        self.assertTrue(loop.dyson_diagnostics["closure_spread"]["self_consistent_excluded"])
+
+    def test_closure_spread_compares_the_frontier_labels(self):
+        """Two closures can order the frontier differently; that is not a spread."""
+        gw = GW(self.mf, closure_spread=True)
+        gw.kernel(5)
+        record = gw.dyson_diagnostics["closure_spread"]
+
+        self.assertIn("homo_orbital_changed", record)
+        self.assertIsInstance(record["homo_orbital_changed"], bool)
+        self.assertIn("homo_orbital", record["frontier_gauss"])
+        self.assertIn("homo_orbital", record["frontier_radau"])
+
     def test_regression_fock_loop_nmom3(self):
         # Dyson's `Spectral` is shared with the Fock loop, which the recorded baseline
         # never exercises: `baseline/run.py` stores `fock_loop` as provenance but does not
