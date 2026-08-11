@@ -855,8 +855,10 @@ class GW(BaseGW):
         Returns
         -------
         record : dict or None
-            The two frontiers, the spread, and where each node was pinned. `None` if the
-            sectors do not leave a gap to pin in.
+            The two frontiers, the spread, and where each node was pinned. `None` where
+            there is no second closure to compare against: a sector realized as a single
+            block has no freedom left to pin with, and sectors whose supports overlap
+            leave nowhere to pin.
 
         Notes
         -----
@@ -877,6 +879,13 @@ class GW(BaseGW):
                 se_static, np.array(moments), **dict(self.dyson_opts, calculate_errors=False)
             )
             solver.kernel()
+            iteration = (
+                solver.max_cycle if solver.max_cycle_achieved is None else solver.max_cycle_achieved
+            )
+            # A single block has no leading part to pin against: the rule has spent all
+            # its freedom on the moments it was given, so there is no second closure.
+            if iteration + 1 < 2:
+                return None
             energies = np.real(solver.result.get_self_energy().energies)
             edges.append((float(energies.min()), float(energies.max())))
 
@@ -1072,7 +1081,10 @@ class GW(BaseGW):
                     se_moments_hole, se_moments_part, se_static, gf
                 )
             if closure is None:
-                logging.write("Closure spread:  sectors leave no gap to pin a node in")
+                logging.write(
+                    "Closure spread:  unavailable at this order (needs at least two "
+                    "blocks per sector, and a gap between their supports)"
+                )
             else:
                 parts = []
                 for name in ("homo", "lumo"):

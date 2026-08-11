@@ -456,11 +456,19 @@ below.
   edge, 1% of the inter-sector gap; the spread is flat over that region (-0.196, -0.205,
   -0.224 eV at 0.005, 0.02, 0.05 Ha) and inflates once the pin sits well off the edge
   (-1.69 eV at 0.6 Ha), where the rule spends a node on empty space.
-  **It earns its place by disagreeing.** Against the `m` versus `m - 2` estimate on
-  water/cc-pVDZ the two track to a factor of 1.7-2.9 at `nmom_max` 3 to 9, then diverge at
-  11: differencing says 0.016 eV, the closure says 0.197 eV. The frontier moves 42 meV at
-  the next order, so the differencing was fooled by the non-monotonic shift and understated
-  the error. That is the case a single indicator cannot catch.
+  **It has a floor, and that is a real limitation** `[corrected 2026-08-11]`. It was first
+  recorded here as earning its place by disagreeing with the `m` versus `m - 2` estimate -
+  at `nmom_max = 11` on water differencing says 0.016 eV and the closure 0.197 eV, with the
+  frontier then moving 42 meV. The order-convergence tables show the fuller picture: the
+  spread barely falls with order at all. On water it is 206, 219, 197, 204, 205 meV across
+  `nmom_max` 7 to 15 while the differencing falls to 0.5 meV; on lithium-hydride it sits at
+  ~188 meV while the differencing reaches 0.02 meV. That is not the pin: pushing the pin to
+  the support edge gives 193 meV at order 7 and 187 at order 13, a 3% fall against a 40%
+  fall in the error it is meant to indicate.
+  So the spread is a **conservative one-sided signal, not an error estimate**. It can say
+  "not converged" and it caught a case where the differencing was fooled, but it cannot
+  certify convergence and must not be read as a magnitude. Whether the floor is intrinsic to
+  pinning a node at a support edge or an artefact of this construction is open.
 - [x] Do not label closure spread a rigorous QP bound. The Gauss/Radau bracket holds for
   an integral of a function with derivatives of constant sign; a quasiparticle energy from
   an upfolded eigenproblem is not one, and no theorem here covers that step. The record
@@ -472,12 +480,33 @@ below.
 
 ### Acceptance gate
 
-- Increasing supported moment order reduces the stated frontier error until the
-  predicted floating-point or realization limit.
-- No calculation silently continues after a PSD, rank, causality, or residual failure.
-- The reported eta0 and realization bounds are consistent with observed moment errors.
-- H2O, LiH, and the selected small-gap system have documented order-convergence tables.
-- Low-order results remain compatible with the Milestone 0 baseline.
+**Four of five pass; the first does not yet, and ozone is why.** Tables from
+[`baseline/studies/order_convergence.py`](baseline/studies/order_convergence.py), swept to
+`nmom_max = 15` from one moment build per system, PBE / cc-pVDZ.
+
+- **Partly passed** - increasing supported moment order reduces the stated frontier error
+  until the predicted limit. Water falls 464 to 0.5 meV per step and then rank-limits at 14
+  conserved of 16 requested; lithium-hydride falls 789 to 0.02 meV and rank-limits at 6
+  from `nmom_max = 7` onward. Both rank limits are genuine: tightening the scale-aware
+  support policy by 1e-4 recovers no order, which settles the question the benzene sweep
+  left open. **Ozone does not converge** - it reaches `nmom_max = 15` with no shortfall at
+  all and the frontier still moving 83 meV per step, so no limit has been reached and this
+  criterion is unmet for the small-gap case. It needs a higher cap, not a fix.
+- **Passed** - no calculation silently continues after a failure. The realization,
+  particle-number and moment-order gates each turn `converged` false and are reported.
+- **Passed** - the reported bounds are consistent with the observed moment errors. The
+  reconstructed-moment residual sits at 2.4e-15 to 1.0e-14 across all three systems and
+  every order, and never degrades; no case is arithmetic-limited below `nmom_max = 15`.
+- **Passed** - H2O, LiH and the small-gap system have documented order-convergence tables.
+- **Passed** - low-order results remain compatible with the Milestone 0 baseline: 52/52.
+
+Two findings from the tables that are not acceptance criteria but bear on reading them.
+**Lithium-hydride's frontier is a satellite**, not a quasiparticle: its weight falls to
+0.459, so the 0.02 meV convergence above says nothing about a quasiparticle energy, and the
+study warns on it. **Ozone crosses a level** between `nmom_max` 1 and 3, from reference
+orbital 9 to 11; the frontier readout records the dominant orbital, so this appears as a
+changed label rather than as a 177 meV shift. Both are 3.4's remaining item - validating
+frontier IP/EA separately from deep-state largest-overlap labels - showing up in data.
 
 ## Milestone 4 - Optimize the verified restricted molecular path
 
