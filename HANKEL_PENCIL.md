@@ -1,7 +1,9 @@
 # The one-shot block Hankel pencil: momentGW's analogue of Cayley's Toeplitz QR
 
-Written 2026-08-12. **Nothing here is implemented.** Every number is reproduced by
-[`baseline/studies/hankel_pencil.py`](baseline/studies/hankel_pencil.py) on this machine
+Written 2026-08-12; §4 and §6.A updated the same day once the noise gate was measured.
+**Nothing here is implemented.** Every number is reproduced by
+[`baseline/studies/hankel_pencil.py`](baseline/studies/hankel_pencil.py) and
+[`baseline/studies/moment_noise.py`](baseline/studies/moment_noise.py) on this machine
 (macOS, Accelerate, PySCF 2.14.0, `mgw-monomial`) at the pin `mkakcl/dyson@73cd18d`.
 
 The question this answers: the Cayley project (`mkakcl/cayley-gw`) has two realization
@@ -17,12 +19,13 @@ moments it recovers poles to 1e-12 Ha at order 41 where the recursion has long s
 
 Four things qualify that, and they change what is worth building:
 
-1. **The stability win does not transfer.** `toeplitz-qr`'s margin comes from `|u| = 1`,
-   which is a property of the *Cayley moments*, not of the algorithm. On the real line the
-   retained singular values sit at 1e-9 to 1e-5 relative rather than O(1), so node error is
-   roughly `noise / 1e-9`. At 1e-12 relative moment noise the hole sector is already wrong
-   by 4e-2 Ha at K=7 and by tens of Ha beyond. **No realization backend can recover this**
-   — it is set by the moments.
+1. **The stability win does not transfer, but the operating point is better than it
+   first looked.** `toeplitz-qr`'s margin comes from `|u| = 1`, a property of the *Cayley
+   moments* rather than of the algorithm; on the real line the retained singular values sit
+   at 1e-9 to 1e-5 relative instead of O(1), so node error runs at about `noise / 1e-9` and
+   **no realization backend can change that**. The gate in §4.1 then measured the real
+   moment error at **1.4e-15 to 8.9e-15**, three decades better than first assumed, which
+   leaves a usable window: **particle to K≈21, hole to K≈13**, and failure beyond.
 2. **The affine renormalisation is not a detail, it is the entire mechanism.** In raw
    monomial coordinates the rank cut that makes the singular Gram usable has a gap of
    **0.1 decades** — it is not identifiable at all. After an exact affine map it is
@@ -168,14 +171,51 @@ On the circle those retained singular values are O(1). **That is the entire diff
 it is a property of the moments.** This is the honest answer to "can we get the
 `toeplitz-qr` win in momentGW": no, not by changing the realization backend.
 
-Two caveats on this section specifically, because it carries the negative conclusion:
+Two caveats on the tables above: the moments are **exact by construction** (synthesised
+from a recorded Lehmann representation) and the noise is synthetic i.i.d. Gaussian, which
+real error is not; and it is one system in one basis, with a hole/particle asymmetry large
+enough that it should not be assumed to hold shape elsewhere.
 
-- The moments here are **exact by construction** (synthesised from a recorded Lehmann
-  representation) and the noise is synthetic i.i.d. Gaussian. Real RPA-quadrature error is
-  neither i.i.d. nor entrywise, and its magnitude on this path **has not been measured** —
-  §6 lists that as the first gate.
-- One system, one basis. The hole/particle asymmetry is large enough that it should not be
-  assumed to hold shape elsewhere.
+### 4.1 The gate: what the real moment error actually is
+
+Measured by [`moment_noise.py`](baseline/studies/moment_noise.py), which runs the production
+pipeline from an **exact** eta0 (a dense eigendecomposition of Mtilde) and differences it
+against the shipped path at `eta0_method="hht"`, `eta0_tol=1e-14`, compression off.
+
+The structure of the path is what makes this the whole story. `build_dd_moments`
+(`rpa.py:382`) takes the zeroth moment from `build_zeroth_dd_moment`, sets
+`moments[1] = Lia * d` exactly, and builds every higher order by an exact algebraic
+recursion. **There is exactly one numerical error source on this path: eta0.** There is no
+quadrature left to refine — `npoints` is read only by the legacy Clenshaw-Curtis route
+(`base.py:67`).
+
+| system | eta0 error | dd (max) | hole (max) | particle (max) |
+|---|---|---|---|---|
+| lih_hf | 2.1e-15 | 2.8e-15 | **1.4e-15** | **1.6e-15** |
+| water_hf | 3.4e-14 | 1.3e-14 | **3.7e-15** | **3.7e-15** |
+| ozone_pbe | 1.8e-12 | 2.9e-13 | **4.0e-15** | **8.9e-15** |
+
+Two things follow, and both matter:
+
+- **The convolution to the self-energy damps the eta0 error rather than amplifying it.**
+  Ozone carries 1.8e-12 in eta0 and 2.9e-13 in the zeroth dd moment, but only 4.0e-15 and
+  8.9e-15 in the self-energy moments. The per-order error also *falls* with order — n0 is
+  the worst row in every case. This is consistent with
+  [`eta0_amplification.py`](baseline/studies/eta0_amplification.py), which found no
+  amplification through the dd recursion and a float64 floor below ~1e-13 scalar error.
+- **The real operating point is at or below the best row of the tables above.** At 1e-14 the
+  particle sector holds 1.7e-9 to 9.9e-9 Ha through K=33, and the hole sector holds
+  5.3e-4 Ha at K=7 and 1.4e-5 Ha at K=13 before failing at K=21.
+
+So the pencil is **more viable than the tables alone suggest** — it has a real working
+range, and that range covers the orders momentGW is normally run at. It is still not the
+`toeplitz-qr` win: the hole sector dies at K=21 where `toeplitz-qr` reaches ≈40.
+
+What this bounds, and what it does not: the reference is a dense eigendecomposition in the
+same float64 arithmetic, so it bounds the error **relative to exact eta0**. Basis, SCF
+convergence and density fitting are common to both sides and cancel out rather than being
+measured. Compression is off by choice; `--compression ia` puts that error back and it has
+not been swept.
 
 ## 5. What this does *not* claim
 
@@ -185,7 +225,8 @@ Two caveats on this section specifically, because it carries the negative conclu
 - **No timing.** The Gram is `(m+1)·nphys` square — 504 for water at K=41, but it grows
   with `nphys`, and for benzene/cc-pVTZ at moderate K it is large. Cost has not been
   compared to the recursion.
-- **Nothing about the `dd` moments or the RPA.** This is the realization stage only.
+- **No compression sweep.** §4.1 measures with compression off; the auxiliary
+  compression error is excluded by choice and its size here is unmeasured.
 - **The affine centre/scale heuristic is not tuned.** §3 uses trace Rayleigh quotients,
   which is the cheapest defensible estimator, not an optimised one. §2's tables use the
   *true* support, which is unavailable in practice — the gap between the two is unmeasured.
@@ -204,9 +245,8 @@ touches the moments that feed the recursion.
 
 Steps:
 
-1. **Measure the real moment noise on this path first.** Everything downstream is calibrated
-   against it, and §4 is currently a proxy. Without this number we cannot say whether any
-   of this helps.
+1. ~~Measure the real moment noise on this path first.~~ **Done — §4.1.** 1.4e-15 to
+   8.9e-15, set by eta0 alone and damped by the convolution rather than amplified.
 2. Add the scale to the existing shift (`s^{-n}`), giving the full affine transform.
 3. Apply it before `initialise_recurrence`; undo as `J → sJ + μI` on the block-tridiagonal
    assembled at [`gw.py:452`](momentGW/gw.py#L452). Exact similarity — assert it.
@@ -250,6 +290,7 @@ is out of scope for this document.
 ```bash
 python -m baseline.studies.hankel_pencil                        # all four sections
 python -m baseline.studies.hankel_pencil --section deflation    # one section
+python -m baseline.studies.moment_noise                         # the §4.1 gate
 ```
 
 `baseline/arrays` is gitignored and reproducible, so a fresh worktree has none. Either run
