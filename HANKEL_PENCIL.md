@@ -1,6 +1,7 @@
 # The one-shot block Hankel pencil: momentGW's analogue of Cayley's Toeplitz QR
 
-Written 2026-08-12; §4 and §6.A updated the same day once the noise gate was measured.
+Written 2026-08-12; §4 and §6.A updated the same day once the noise gate was measured,
+and §5 and §6.B once the head-to-head was.
 **Nothing here is implemented.** Every number is reproduced by
 [`baseline/studies/hankel_pencil.py`](baseline/studies/hankel_pencil.py) and
 [`baseline/studies/moment_noise.py`](baseline/studies/moment_noise.py) on this machine
@@ -33,11 +34,16 @@ Four things qualify that, and they change what is worth building:
 3. **That renormalisation is free, exact, and helps the *existing* recursion too** — it is
    not tied to the new backend. It is the single cheapest item here, and half of it is
    already implemented and tested in dyson, just not on the compute path.
-4. **So the pencil's value is diagnostic, not production.** It measures something `MBLSE`
-   structurally cannot: how many moments the data actually supports.
+4. **The head-to-head settles what the pencil is for, and it is less than proposed.**
+   Measured against `MBLSE` on the same real moments (§6.B): where the recursion is healthy
+   it loses by three to five decades, so it is not a backend; where the recursion *stalls*
+   it wins by five, holding 12 moments to 1.4e-11 where the recursion keeps 6 and drifts to
+   7.0e-6. But the stall is **already reported** by `nmom_conserved`, so it is not a
+   diagnostic either, and the two routes' frontier energies agree to ≤1.1e-8 eV — the extra
+   fidelity buys sub-µeV. The remaining niche is a fallback for stalled sectors.
 
-Recommended order of work is §6: **(A) affine renormalisation first, (B) pencil as a
-second opinion, (C) do not chase K≈40.**
+Revised order of work (§6): **(A) affine renormalisation, (B) find a case where a stall
+costs more than a µeV — or close the pencil out, (C) do not chase K≈40.**
 
 ---
 
@@ -219,9 +225,8 @@ not been swept.
 
 ## 5. What this does *not* claim
 
-- **No head-to-head against `MBLSE`.** Everything above measures the pencil against exact
-  poles. Whether it beats the recursion at equal noise is untested, and is the obvious next
-  measurement.
+- ~~No head-to-head against `MBLSE`.~~ **Done — §6.B.** Neither route dominates; the split
+  is by whether the recursion has stalled.
 - **No timing.** The Gram is `(m+1)·nphys` square — 504 for water at K=41, but it grows
   with `nphys`, and for benzene/cc-pVTZ at moderate K it is large. Cost has not been
   compared to the recursion.
@@ -258,22 +263,58 @@ Gate: no baseline case moves beyond its recorded tolerance, and at least the hol
 show a measurable drop in recursion error metrics. This is a **fork-only** change; see
 `CLAUDE.md` on upstream.
 
-### B. The pencil as a second opinion — build after A
+### B. The pencil — measured, and the answer is narrower than proposed
 
-Its value is not accuracy, it is that it measures what `MBLSE` cannot infer: **the sv cliff
-gives the effective pole count of the data**, so "is order 11 supported?" becomes an
-observable rather than a guess from whether the recursion returned. That serves the ROADMAP
-rule *"never report convergence solely because a linear algebra routine returned."*
+**Step 1 is done**, by [`pencil_vs_mblse.py`](baseline/studies/pencil_vs_mblse.py): both
+routes given the *same* real moments from the production dRPA path, compared on moment
+reconstruction and on frontier quasiparticle energies through the same Dyson solve.
+`nmom_max = 3, 5, 7, 9, 11` on lih_hf, water_hf and ozone_pbe, compression off.
 
-Steps:
+**Neither route dominates, and the split is clean.**
 
-1. Head-to-head against `MBLSE` at realistic noise (the §5 gap). **If the pencil loses
-   everywhere, stop here** — record the negative result and close it out.
-2. If it holds at low K, expose it as a diagnostic reporting effective rank and the sv gap,
-   not as a `solve_dyson` backend.
-3. Only then consider it a selectable backend, and only with the deflation thresholds
-   treated as first-class options the way `toeplitz-qr` treats
-   `block_rank_absolute`/`block_rank_relative`.
+Where the recursion is healthy — water, ozone, and lih_hf up to order 5 — `MBLSE` holds
+flat at 3e-15 to 9e-15 at *every* order, and the pencil degrades with order exactly as §4
+predicts:
+
+| system, order 11 | `MBLSE` hole / particle | pencil hole / particle |
+|---|---|---|
+| water_hf | 6.5e-15 / 5.3e-15 | 2.1e-11 / 4.2e-10 |
+| ozone_pbe | 6.7e-15 / 8.1e-15 | 1.3e-13 / 1.9e-10 |
+
+**`MBLSE` wins by three to five decades there.** That is the expected result and it settles
+the backend question: the pencil is not a replacement.
+
+Where the recursion *stalls*, it reverses. On lih_hf the hole sector stops advancing at
+order 7 and never recovers:
+
+| order | `MBLSE` hole | poles | conserved | pencil hole | poles |
+|---|---|---|---|---|---|
+| 5 | 5.4e-15 | 57 | 6/6 | 2.0e-14 | 57 |
+| 7 | **2.6e-07** | 57 | **6/8** | 8.1e-13 | 68 |
+| 9 | **2.0e-06** | 57 | **6/10** | 1.1e-12 | 68 |
+| 11 | **7.0e-06** | 57 | **6/12** | 1.4e-11 | 68 |
+
+The recursion keeps 6 moments however many it is given, and its reconstruction error climbs
+to 7e-6. The pencil finds the 11 extra poles and holds all 12 moments to 1.4e-11.
+
+**Two things stop this being a bigger claim than it is.**
+
+- **The stall is already reported.** `max_cycle_achieved = 2` against a requested
+  `max_cycle = 5`, and `nmom_conserved = 6`, which `_frontier_from_solvers`
+  ([`gw.py:536`](momentGW/gw.py#L536)) already reads into the frontier readout, alongside
+  `nmom_conserved_requested` and `nmom_conserved_achieved` in the Dyson diagnostics
+  ([`gw.py:118-119`](momentGW/gw.py#L118-L119)). The pencil is **not** detecting an
+  unreported failure — the premise of the old step 2 was wrong. What it does is *proceed
+  past a failure the code already admits to*.
+- **It barely matters physically at these orders.** Frontier energies from the two routes
+  agree to ≤1.1e-8 eV everywhere, and the stalled lih_hf case differs by 5.6e-7 eV on the
+  HOMO. The 5 extra decades of moment fidelity buy sub-µeV.
+
+**Revised proposal.** Not a backend (it loses where the recursion is healthy), and not a
+diagnostic (the stall is already diagnosed). The remaining niche is a **fallback for
+sectors the recursion has reported as stalled** — narrow, and worth taking only if a case
+is found where the stall costs more than a µeV. Finding or excluding such a case is the
+next step, not implementation.
 
 ### C. Do not chase K≈40 on monomial moments
 
@@ -291,6 +332,7 @@ is out of scope for this document.
 python -m baseline.studies.hankel_pencil                        # all four sections
 python -m baseline.studies.hankel_pencil --section deflation    # one section
 python -m baseline.studies.moment_noise                         # the §4.1 gate
+python -m baseline.studies.pencil_vs_mblse                      # the §6.B head-to-head
 ```
 
 `baseline/arrays` is gitignored and reproducible, so a fresh worktree has none. Either run
