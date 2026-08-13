@@ -40,6 +40,25 @@ def nelec_tolerance(gw, fock_loop):
     return 1e-1
 
 
+def achieved_iteration(solver):
+    """Get the iteration a solver actually completed.
+
+    `max_cycle_achieved` is `None` until `kernel` has run and equals `max_cycle` unless the
+    recurrence stepped down. Written once because several call sites had inlined it.
+
+    Parameters
+    ----------
+    solver : dyson.MBLSE
+        Solver, after `kernel` has been called.
+
+    Returns
+    -------
+    iteration : int
+        The last iteration the recurrence completed.
+    """
+    return solver.max_cycle if solver.max_cycle_achieved is None else solver.max_cycle_achieved
+
+
 #: Weight below which a multiplet is a satellite rather than a quasiparticle. A
 #: moment-truncated spectrum carries a forest of low-weight poles between the HOMO and the
 #: true LUMO, and a permissive threshold picks one of them as the frontier.
@@ -105,10 +124,7 @@ def realization_record(solver, se_moments):
     record : dict
         Realization diagnostics for one sector.
     """
-    if solver.max_cycle_achieved is None:
-        achieved = solver.max_cycle
-    else:
-        achieved = solver.max_cycle_achieved
+    achieved = achieved_iteration(solver)
 
     return {
         "moments_supplied": int(np.asarray(se_moments).shape[0]),
@@ -445,9 +461,7 @@ class GW(BaseGW):
         self_energy : dyson.Lehmann
             The Gauss-Radau realization.
         """
-        iteration = (
-            solver.max_cycle if solver.max_cycle_achieved is None else solver.max_cycle_achieved
-        )
+        iteration = achieved_iteration(solver)
         nphys = solver.nphys
         jacobi = dyson_util.build_block_tridiagonal(
             [solver.on_diagonal[i] for i in range(iteration + 2)],
@@ -534,10 +548,7 @@ class GW(BaseGW):
 
         readout = frontier_readout(gf)
         readout["nmom_conserved"] = min(
-            solver.nmom_conserved(
-                solver.max_cycle if solver.max_cycle_achieved is None else solver.max_cycle_achieved
-            )
-            for solver in solvers
+            solver.nmom_conserved(achieved_iteration(solver)) for solver in solvers
         )
 
         # The other quantities the order has to carry with it. The particle number
@@ -903,9 +914,7 @@ class GW(BaseGW):
 
         edges = []
         for solver in solvers:
-            iteration = (
-                solver.max_cycle if solver.max_cycle_achieved is None else solver.max_cycle_achieved
-            )
+            iteration = achieved_iteration(solver)
             # A single block has no leading part to pin against: the rule has spent all
             # its freedom on the moments it was given, so there is no second closure.
             if iteration + 1 < 2:

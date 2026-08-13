@@ -73,7 +73,8 @@ dev = [
     "ruff>=0.10.0",
     "coverage[toml]>=5.5.0",
     "typing-extensions>=4.0.0",
-    "pytest>=6.2.4",
+    # 7.0 for the `pythonpath` ini option the test config relies on.
+    "pytest>=7.0",
     "pytest-cov>=4.0.0",
     "pytest-env>=1.1.0",
     "pre-commit>=2.15.0",
@@ -192,6 +193,12 @@ directory = "cov_html"
 [tool.pytest.ini_options]
 testpaths = [
     "tests",
+]
+# `baseline/` is deliberately not part of the distribution (see `packages` above), so a
+# test that imports it needs the repository root on the path. Without this, bare `pytest`
+# fails collection for the whole suite and only `python -m pytest` works.
+pythonpath = [
+    ".",
 ]
 addopts = [
     "--durations=0",

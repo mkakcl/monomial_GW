@@ -57,7 +57,7 @@ import momentGW
 from baseline.studies.hankel_pencil import affine_moments, block_hankel, moment_support_estimate
 from baseline.studies.moment_noise import SYSTEMS
 from momentGW.fock import FockLoop
-from momentGW.gw import GW, frontier_readout
+from momentGW.gw import GW, achieved_iteration, frontier_readout
 from momentGW.rpa import dRPA
 
 HARTREE2EV = 27.211386245988
@@ -232,12 +232,7 @@ def run_system(name, orders):
                         # being presented as an undetected failure. `max_cycle_achieved`
                         # below `max_cycle` means it stopped early, and `nmom_conserved`
                         # is how many moments it actually kept.
-                        achieved = (
-                            solver.max_cycle
-                            if solver.max_cycle_achieved is None
-                            else solver.max_cycle_achieved
-                        )
-                        conserved.append(solver.nmom_conserved(achieved))
+                        conserved.append(solver.nmom_conserved(achieved_iteration(solver)))
                     else:
                         sector, rank = pencil_self_energy(moments)
                         ranks.append(rank)
