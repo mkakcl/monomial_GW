@@ -363,10 +363,23 @@ formed; no particle-hole squared matrix is allowed.
 
 ### 3.2 Scaled or modified moments
 
-- [ ] Affinely center and scale the hole and particle spectral sectors separately so
-  their supports are order one.
-- [ ] Transform raw monomial moments to the scaled basis before realization and
-  transform poles back afterward.
+- [x] Affinely center and scale the hole and particle spectral sectors separately so
+  their supports are order one. **Measured and rejected** (2026-08-12,
+  `baseline/studies/affine_recursion.py`): applied in front of the recursion the transform
+  changes nothing it was proposed to change and costs accuracy. See the next item.
+- [x] Transform raw monomial moments to the scaled basis before realization and
+  transform poles back afterward. **Measured and rejected** (2026-08-12). The transform is
+  exact and the poles map back exactly, but `MBLSE` never forms a Hankel matrix, so there
+  is no conditioning for it to improve: in exact arithmetic the recursion is invariant
+  under the similarity, and in floating point the binomial sum
+  `sum_k C(n,k) (-mu)^(n-k) T_k` merely adds its own cancellation. Three systems, both
+  sectors, orders 7 and 11, and three centre/scale choices including one given the *true*
+  pole range: the lithium-hydride hole stall is unmoved to three significant figures
+  (6/12 conserved, 57 poles, 7.04e-6 residual in every variant), while healthy sectors lose
+  up to 500x (lih_hf particle at order 11, 2.57e-15 to 1.31e-12). Damage tracks `|mu|`,
+  which is the cancellation. The conditioning gain this was premised on -- 13.7x to 2.3e6x
+  on `cond(H0)`, `HANKEL_PENCIL.md` section 3 -- is real but applies to a Gram matrix only
+  a one-shot route forms, not to this one.
 - [ ] Evaluate a direct Chebyshev/modified-moment plus block-Jacobi backend for orders
   where raw monomial Hankel matrices lose usable precision. **Premise unmeasured on this
   path** (2026-08-10): no such order was found up to `nmom_max = 15`, from H2 to
@@ -377,8 +390,18 @@ formed; no particle-hole squared matrix is allowed.
   MBLSE runs a block Lanczos recurrence and never forms a raw monomial Hankel matrix, which
   is likely why; `mkakcl/chebyshev-gw`, which Cholesky-factorises a Gram, is arith-limited
   at 13-27 depending on the system. Independent cross-check: lithium-hydride rank-limits at
-  5-6 conserved orders in both codes, so that limit is the molecule rather than the moment
-  basis. Do not build this until a system is found where the residual actually degrades;
+  5-6 conserved orders in both codes `[corrected 2026-08-12: this was read as showing the
+  limit is the molecule rather than the moment basis. Two codes agreeing was the whole
+  evidence, and a third disagrees. The one-shot block Hankel pencil of `HANKEL_PENCIL.md`
+  has no PSD gate -- it deflates on eigenvalue magnitude instead -- and on the same hole
+  moments reaches 68 poles against MBLSE's 57, conserving all 12 at `K = 11`. That is
+  consistent with, not contrary to, the PSD-gate finding below: loosening `neg_atol`/
+  `neg_rtol` by 1e4 already buys lithium-hydride 2 more orders at 60x the residual, and the
+  pencil sits further along the same trade rather than escaping it. So the limit is a
+  gate *policy*, not the molecule and not the moment basis. This does not revive 3.2: the
+  frontier difference between the two routes is 5.6e-7 eV against a truncation error of
+  tens of meV]`.
+  Do not build this until a system is found where the residual actually degrades;
   if one is, the source-agnostic `realization/` package in that repo is the thing to reuse,
   behind an option with monomial remaining the default.
 - [ ] Keep the raw monomial backend as an oracle at low order during migration.
@@ -521,6 +544,15 @@ matches what was claimed:
 | --- | --- | --- | --- | --- |
 | lithium-hydride, `K = 7` | 6 | 3.58e-15 | **8** at 2.22e-13 | the gate is binding; it costs 2 orders, at 60x the residual |
 | water, `K = 15` | 14 | 5.60e-15 | 14 at 5.60e-15 | not the tolerance: the direction is materially negative |
+
+**What a step-down costs against what was asked for** `[added 2026-08-12]`. The residual
+column above is measured at the *achieved* order, which is why it stays at ~1e-15 through
+every step-down and cannot indicate a cause. Measured instead against the **requested**
+moment set (`baseline/studies/pencil_vs_mblse.py`), the lithium-hydride hole sector reaches
+2.6e-7 at `K = 7`, 2.0e-6 at `K = 9` and 7.0e-6 at `K = 11` -- the error in the moments the
+caller asked for and did not get. The two numbers are not in conflict; they answer different
+questions, and only the second says what the step-down cost. Frontier impact is small
+regardless: 5.6e-7 eV on the HOMO against the pencil, which conserves the full set.
 
 **Two findings that bear on reading the tables.** Lithium-hydride's frontier is a satellite,
 weight 0.458, so its 0.02 meV convergence says nothing about a quasiparticle; the study warns
