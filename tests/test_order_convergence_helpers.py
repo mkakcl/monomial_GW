@@ -15,7 +15,9 @@ import pytest
 from baseline.studies.order_convergence import (
     LayoutError,
     _by_sector,
+    _classify_residuals,
     _pin_key,
+    _residual_report,
     _runs,
     _sectors,
     _span,
@@ -102,6 +104,115 @@ class TestSectors:
 
     def test_the_format_is_applied(self):
         assert _sectors(sectors(1, 1, 1.1e-14, 3.3e4), "residual", "{:.2e}") == "1.10e-14/3.30e+04"
+
+
+class TestClassifyResiduals:
+    """The split that decides whether a probe verdict blames the loosening.
+
+    Reporting a pre-existing blow-up as a cost of loosening voids orders another sector
+    genuinely bought, which is what an earlier version of this did on lithium-hydride.
+    """
+
+    def test_healthy_everywhere_says_nothing(self):
+        caused, already, unknown = _classify_residuals(sectors(6, 8), sectors(8, 8))
+
+        assert (caused, already, unknown) == ({}, {}, set())
+
+    def test_a_blow_up_the_loosening_created_is_its_fault(self):
+        before = sectors(6, 8, 1e-15, 1e-15)
+        reached = sectors(8, 8, 1e3, 1e-15)
+
+        caused, already, unknown = _classify_residuals(before, reached)
+
+        assert caused == {"hole": 1e3}
+        assert already == {} and unknown == set()
+
+    def test_a_blow_up_that_predates_it_is_not(self):
+        """Lithium-hydride at nmom_max=19: the particle is broken before and after."""
+        before = sectors(6, 20, 3.6e-15, 3.3e4)
+        reached = sectors(8, 20, 2.2e-13, 3.3e4)
+
+        caused, already, unknown = _classify_residuals(before, reached)
+
+        assert already == {"particle": 3.3e4}
+        # And the hole, which actually gained, is not implicated.
+        assert caused == {} and unknown == set()
+
+    def test_a_missing_residual_is_neither(self):
+        """`nan` is what `_by_sector` stores when errors are off.
+
+        Every comparison against it is False, so without an explicit branch the sector lands
+        in `already` and the verdict asserts the blow-up predates a loosening it may not.
+        """
+        before = sectors(6, 8, float("nan"), 1e-15)
+        reached = sectors(8, 8, 1e3, 1e-15)
+
+        caused, already, unknown = _classify_residuals(before, reached)
+
+        assert unknown == {"hole"}
+        assert caused == {} and already == {}
+
+
+def rows_with(*per_order):
+    """Build the row list `_residual_report` reads, from (order, hole, particle) residuals."""
+    return [
+        {"order": order, "by_sector": sectors(1, 1, hole, particle)}
+        for order, hole, particle in per_order
+    ]
+
+
+class TestResidualReport:
+    """The footer that reports realizations which do not reproduce their moments.
+
+    This is the study's only claim that a calculation is unusable, and the ROADMAP quotes
+    its realization count, so a miscount is a misreported finding rather than a cosmetic bug.
+    """
+
+    def test_a_healthy_sweep_reports_nothing(self):
+        assert _residual_report(rows_with((19, 1e-15, 1e-14), (21, 1e-15, 1e-14)), 2) == []
+
+    def test_a_pinned_blow_up_is_one_realization_however_many_orders_repeat_it(self):
+        """Once a sector pins, every higher order repeats the same failed realization."""
+        rows = rows_with((19, 1e-15, 3e4), (21, 1e-15, 3e4), (23, 1e-15, 3e4))
+
+        (line,) = _residual_report(rows, 2)
+
+        assert "1 distinct realization(s)" in line
+        assert "K=19 to 23" in line
+
+    def test_recovering_and_blowing_up_again_is_two(self):
+        """The case the count used to get wrong by keying on the sector alone.
+
+        Same sector, same conserved order, but a healthy order in between: two separate
+        failed realizations, not one run spanning an order that was fine.
+        """
+        rows = rows_with((19, 1e-15, 3e4), (21, 1e-15, 1e-14), (23, 1e-15, 3e4), (25, 1e-15, 3e4))
+
+        (line,) = _residual_report(rows, 2)
+
+        assert "2 distinct realization(s)" in line
+        assert "K=19, K=23 to 25" in line
+
+    def test_an_unmeasured_residual_is_reported_not_dropped(self):
+        """`nan > RESIDUAL_MAX` is False, so filtering would read as a clean sweep."""
+        (line,) = _residual_report(rows_with((19, float("nan"), 1e-14)), 2)
+
+        assert "no residual was calculated for hole" in line
+        assert "absence of evidence" in line
+
+    def test_unmeasured_and_blown_are_both_reported(self):
+        lines = _residual_report(rows_with((19, float("nan"), 3e4)), 2)
+
+        assert len(lines) == 2
+        assert "no residual was calculated" in lines[0]
+        assert "1 distinct realization(s)" in lines[1]
+
+    def test_the_worst_residual_is_the_one_named(self):
+        rows = rows_with((19, 1e-15, 3e4), (21, 5e6, 3e4))
+
+        (line,) = _residual_report(rows, 2)
+
+        assert "reaches 5.00e+06 in the hole sector at K=21" in line
 
 
 class TestLayoutGuard:
