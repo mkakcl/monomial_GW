@@ -468,6 +468,20 @@ below.
   ~188 meV while the differencing reaches 0.02 meV. That is not the pin: pushing the pin to
   the support edge gives 193 meV at order 7 and 187 at order 13, a 3% fall against a 40%
   fall in the error it is meant to indicate.
+  `[re-checked 2026-08-12 against the extended sweep, conclusion unchanged.` Lithium-hydride
+  drops once, 187.42 to 161.91 meV, at `nmom_max = 19` - the order its realization pins - and
+  is then flat to 23. A 14% fall at one order, concurrent with the differencing going to
+  0.00, does not make the spread track the error. **The right statement is about the spread,
+  not about a ratio.** It is flat: water runs 206, 219, 197, 204, 205, 203, 202, 202, 202
+  meV across `nmom_max` 7 to 23 - the last three identical because its realization is frozen
+  there - and lithium-hydride sits at ~188 meV to 17, while the differencing falls three
+  orders of magnitude over the same range. The ratio between them therefore grows
+  without the spread having said anything, and quoting a ratio band was the wrong frame -
+  the earlier "two to four orders of magnitude above it throughout" is false at low order
+  (at `nmom_max = 3` the spread is 786 against a differencing of 789 on lithium-hydride) and
+  on water does not reach two orders until 15. What holds on both, at every order, is that
+  the spread does not fall with the error it is meant to indicate. Water shows the same shape: 204.57, 203.02, 201.68 and then frozen.
+  The floor is real on the longer sweep as well.`]`
   So the spread is a **conservative one-sided signal, not an error estimate**. It can say
   "not converged" and it caught a case where the differencing was fooled, but it cannot
   certify convergence and must not be read as a magnitude. Whether the floor is intrinsic to
@@ -486,22 +500,65 @@ below.
 
 ### Acceptance gate
 
-**Four of five pass; the first does not, and ozone is why.** Tables from
-[`baseline/studies/order_convergence.py`](baseline/studies/order_convergence.py), swept to
-`nmom_max = 15` from one moment build per system, PBE / cc-pVDZ. The frontier is read by
-Aufbau counting over the correlated multiplets, which survives a level crossing.
+**Four of five pass** `[2026-08-12]`. Tables from
+[`baseline/studies/order_convergence.py`](baseline/studies/order_convergence.py), one moment
+build per system, PBE / cc-pVDZ. All three pin at `nmom_max = 19` and are swept past it -
+to 23 for water and lithium-hydride, and to 31 for ozone, which is the small-gap case and
+the one previously recorded as having no limit, so its frozen region is confirmed over seven
+orders rather than two. That is what the bare command now does. The old cap of 15 was below
+all three limits, not just ozone's. The frontier is read by Aufbau counting over the
+correlated multiplets, which survives a level crossing.
 
-- **Partly passed** - increasing supported moment order reduces the stated frontier error
-  until the predicted limit. Water falls 464 to 0.5 meV per step, lithium-hydride 789 to
-  0.02 meV, and both then stop at a limit. **Ozone does not**: it reaches `nmom_max = 15`
-  with no shortfall at all and the frontier still moving 83 meV per step, so no limit has
-  been reached and this criterion is unmet for the small-gap case. It needs a higher cap.
-- **Passed** - no calculation silently continues after a failure. The tables carry the gate
-  states per row: every stepped-down order shows `realization` failed and `converged`
-  false, which is the criterion demonstrated rather than asserted.
-- **Passed** - the reported bounds are consistent with the observed moment errors. The
-  reconstructed-moment residual sits at 2.4e-15 to 1.0e-14 across all three systems and
-  every order that completes, and never degrades.
+- **Passed** `[2026-08-12: all three swept to the caps they needed]` - increasing supported
+  moment order reduces the stated frontier error until each system's realization pins, after
+  which every higher order returns the identical answer. All three reach their final
+  realization at `nmom_max = 19`. Read at that same order for all three, the last step that
+  crossed a change of realization is 0.14 meV for water at 14/20 conserved, 0.00 meV for
+  lithium-hydride at 6/20, and 1.74 meV for ozone - the small-gap case, which `nmom_max = 15`
+  was far too low to resolve - at 18/20. (Lithium-hydride's 0.00 is a real reading: its
+  realization changed at 19 and the frontier did not move, which is what convergence looks
+  like. It was previously quoted as 0.01, which is the order-17 figure. Note that this is
+  the row the criterion two bullets down declares unusable: the realization that changed at
+  19 is the particle sector reaching 20 conserved with a residual eighteen orders above the
+  band. Lithium-hydride's frontier convergence is real, and it sits on a realization that
+  does not reproduce its own moments.) Loosening the PSD tolerance recovers
+  nothing on water or ozone, so those two limits are materially negative rather than
+  marginal tolerance calls; lithium-hydride's is a tolerance call, and buys 2 hole orders at
+  60x that sector's residual.
+  **The fall is not monotonic and the criterion should not be read as if it were.** Ozone
+  runs 177, 535, 72, 127, 99, 63, 83, 31, 1.7 meV: it rises to three times its first value
+  at `nmom_max = 5` before descending. Water and lithium-hydride peak at their first entry
+  and fall from there. What holds on all three is the envelope and the endpoint, not
+  step-by-step improvement - which is the same non-monotonicity that forces the walk in 3.3 to
+  require two consecutive qualifying orders rather than one.
+  The full sweep, with a PSD probe at every stepped-down order, costs 22 s for ozone and
+  33-40 s for all three.
+- **Passed for the failures that are gated** - no calculation silently continues past one
+  of those. The tables carry the gate states per row: every stepped-down order shows
+  `realization` failed and `converged` false, which is the criterion demonstrated rather
+  than asserted. `converged` is the conjunction of the gates, so this holds even where an
+  individual gate misreads - see the known limitation under 3.3, where `moment_order` can be
+  true beside `realization` false. It is the conjunction that is safe to read; the
+  individual gates are not yet. The qualifier is the point: a residual blow-up is a failure
+  and is *not* gated, per the criterion below, so this criterion is only as strong as the
+  gate set it quantifies over.
+- **Not passed** `[2026-08-12: was recorded as passed against a sweep that stopped too
+  early]` - the reported bounds are *not* always consistent with the observed moment errors.
+  Across water and ozone the reconstructed-moment residual stays in 2.4e-15 to 2e-14 at
+  every order, which is the band this criterion was recorded against. **Lithium-hydride
+  breaks it**: at `nmom_max = 19` its particle sector conserves 20 of the 20 requested - so
+  that sector's realization gate passes - with a residual eighteen orders of magnitude above
+  the rest of the sweep. The realization does not reproduce the moments it was given, and
+  nothing anywhere gates on it; had the hole not independently stepped down, `converged`
+  would have been true. The old cap of 15 stopped one order short of it, which is why this
+  was recorded as passed.
+  The magnitude is deliberately written as a gap and not as a number. The moments are built
+  once at the cap and sliced, the slicing is equal only to roundoff, and a realization that
+  has stopped reproducing its moments amplifies roundoff without bound, so the same
+  `K = 19` particle reads 7.7e+03 swept to 21, 3.3e+04 to 23 and 3.5e+04 to 19. Only the gap
+  reproduces on any sweep, and the gap is the finding.
+  The table above prints it in the `resid` column; **nothing detects it, and a gate for it
+  belongs in `dyson_diagnostics`.** That is the next thing to do.
 - **Passed** - H2O, LiH and the small-gap system have documented order-convergence tables.
 - **Passed** - low-order results remain compatible with the Milestone 0 baseline: 52/52.
 
@@ -514,16 +571,27 @@ touched, so it reports ~1e-15 for every step-down and cannot indicate a cause. T
 that pronounced the limits genuine scaled `atol`/`rtol`, which set the support mask and
 provably cannot move a step-down - it returned bit-identical results.
 
-Measured with `neg_atol`/`neg_rtol`, which do govern it, the two systems differ and neither
-matches what was claimed:
+Measured with `neg_atol`/`neg_rtol`, which do govern it, the three systems do not agree and
+none matches what was claimed. Conserved order and residual are given per sector, hole then
+particle, because the binding minimum cannot tell a sector that stepped down from one that
+never had further to go - and pairing one sector's order with another's residual is what the
+single-column version of this table was doing:
 
-| system | conserved | residual | with the PSD gate loosened 1e4 | reading |
+| system | conserved h/p | residual h/p | with `neg_atol`/`neg_rtol` x10000 | reading |
 | --- | --- | --- | --- | --- |
-| lithium-hydride, `K = 7` | 6 | 3.58e-15 | **8** at 2.22e-13 | the gate is binding; it costs 2 orders, at 60x the residual |
-| water, `K = 15` | 14 | 5.60e-15 | 14 at 5.60e-15 | not the tolerance: the direction is materially negative |
+| lithium-hydride, first step-down `K = 7` | 6/8 | 3.58e-15 / 4.83e-15 | **8**/8 at 2.22e-13 / 4.83e-15 | the gate is binding; it buys the hole 2 orders at 60x that sector's residual, the particle unaffected |
+| water, first step-down `K = 15` | 14/16 | 5.60e-15 / 6.94e-15 | 14/16 at 5.60e-15 / 6.94e-15 | not the tolerance: the direction is materially negative |
+| water, at its limit `K = 19` to `23` | 14/20 | 5.60e-15 / 8.59e-15 | 14/20 at 5.60e-15 / 8.59e-15 | unchanged, so the limit is genuine and not a tolerance call |
+| ozone, `K = 19` to `31` | 18/20 | 1.13e-14 / 1.20e-14 | 18/20 at 1.13e-14 / 1.20e-14 | not the tolerance either, and identically so at all seven stepped-down orders |
+
+Lithium-hydride is the case the per-sector columns were needed for: the single number said
+the gate bought 2 orders at 60x the residual, without saying that the cost lands entirely in
+the hole and that the particle was never constrained. Ozone's row is the whole frozen region rather than one order: every stepped-down
+order is probed, because a verdict read off the lowest does not cover the rest, and the
+frozen region is exactly where the claim matters.
 
 **Two findings that bear on reading the tables.** Lithium-hydride's frontier is a satellite,
-weight 0.458, so its 0.02 meV convergence says nothing about a quasiparticle; the study warns
+weight 0.458, so its sub-0.01 meV convergence says nothing about a quasiparticle; the study warns
 below 0.7. Ozone crosses a level between orders 1 and 3, and its two closures disagree on
 the frontier state at least once - so part of its closure column compares different states,
 and the study now says so. Both are 3.4's remaining item showing up in data.
