@@ -44,11 +44,14 @@ Four things qualify that, and they change what is worth building:
    it wins by five, holding 12 moments to 1.4e-11 where the recursion keeps 6 and drifts to
    7.0e-6. But the stall is **already reported** by `nmom_conserved`, so it is not a
    diagnostic either, and the two routes' frontier energies agree to ≤1.1e-8 eV — the extra
-   fidelity buys sub-µeV. The remaining niche is a fallback for stalled sectors.
+   fidelity buys sub-µeV. The sweep in §6.B.1 then found a failure that *does* clear the
+   bar — 46 µeV on hydrogen, where truncation error is designed out — so the pencil is kept
+   rather than closed, but scoped to `K ≤ 15`, above which it is worse than what it replaces.
 
-Where this leaves §6: **(A) is closed — measured and rejected.** (B) is narrowed to
-finding a case where a stall costs more than a µeV, or closing the pencil out too. (C)
-stands: do not chase K≈40 on monomial moments.
+Where this leaves §6: **(A) is closed — measured and rejected.** **(B) is measured** —
+the bar is cleared on one system, so the pencil survives as a scoped fallback for failed
+sectors at `K ≤ 15`, pending a cost/benefit call rather than implementation. (C) stands:
+do not chase K≈40 on monomial moments.
 
 ---
 
@@ -323,13 +326,20 @@ to 7e-6. The pencil finds the 11 extra poles and holds all 12 moments to 1.4e-11
 
 **Two things stop this being a bigger claim than it is.**
 
-- **The stall is already reported, and already diagnosed.** `max_cycle_achieved = 2`
+- **A stall is already reported, and already diagnosed.** `max_cycle_achieved = 2`
   against a requested `max_cycle = 5`, and `nmom_conserved = 6`, which `_frontier_from_solvers`
-  ([`gw.py:536`](momentGW/gw.py#L536)) already reads into the frontier readout, alongside
+  ([`gw.py:550`](momentGW/gw.py#L550)) already reads into the frontier readout, alongside
   `nmom_conserved_requested` and `nmom_conserved_achieved` in the Dyson diagnostics
-  ([`gw.py:118-119`](momentGW/gw.py#L118-L119)). The pencil is **not** detecting an
-  unreported failure — the premise of the old step 2 was wrong. What it does is *proceed
-  past a failure the code already admits to*.
+  ([`gw.py:134-135`](momentGW/gw.py#L134-L135)). The pencil is **not** detecting an
+  unreported failure here — the premise of the old step 2 was wrong for stalls. What it
+  does is *proceed past a failure the code already admits to*.
+
+  **That holds for stalls only, and there is a second failure mode it does not cover.**
+  ROADMAP 3.3 now records lithium-hydride's particle sector conserving 20 of 20 at
+  `nmom_max = 19` with a residual eighteen orders above the healthy band — a realization
+  that passes its gate while not reproducing the moments it was given. Nothing gates on
+  that, and a residual gate in `dyson_diagnostics` is recorded there as the next thing to
+  do. So "already reported" is true of the conserved count and false of the residual.
 
   ROADMAP 3.2 goes further and names the cause: `MBLSE.kernel` steps down in exactly one
   place, **a PSD failure on the next block's square root**, and loosening the gate
@@ -348,10 +358,57 @@ to 7e-6. The pencil finds the 11 extra poles and holds all 12 moments to 1.4e-11
   HOMO. The 5 extra decades of moment fidelity buy sub-µeV.
 
 **Revised proposal.** Not a backend (it loses where the recursion is healthy), and not a
-diagnostic (the stall is already diagnosed). The remaining niche is a **fallback for
-sectors the recursion has reported as stalled** — narrow, and worth taking only if a case
-is found where the stall costs more than a µeV. Finding or excluding such a case is the
-next step, not implementation.
+diagnostic (a stall is already diagnosed). The remaining niche is a **fallback for sectors
+the recursion has failed on** — worth taking only if a failure is found that costs more
+than a µeV.
+
+### 6.B.1 The sweep: the condition is met, and the window is narrow
+
+[`stall_sweep.py`](baseline/studies/stall_sweep.py) sweeps the five Milestone 0 systems at
+both starting points, orders 3 to 21 — past `nmom_max = 19`, where ROADMAP 3.3 finds all
+three acceptance-gate systems pin. It counts both failure modes 3.3 distinguishes: a
+step-down, and a realization conserving everything asked while not reproducing it. Each
+failure is priced by realizing the same moments with the pencil and differencing the
+frontier through the same Dyson solve — but **only where the pencil itself clears
+`RESIDUAL_MAX`**, since §4 predicts it degrading with order and it does.
+
+```
+56 failing cases.  14 priced.  42 not priced (pencil worse than the failed recursion).
+Largest priced cost: 4.622e-05 eV  (hydrogen_hf, K = 11)
+```
+
+**The condition is met.** 46 µeV is 46x the bar, and 7 priced failures exceed it. So the
+pencil is not closed out.
+
+It matters more than 46 µeV sounds, because of *which* system it is.
+[`baseline/systems.py`](baseline/systems.py) puts hydrogen in the set precisely because
+"nine RPA poles, so the moment expansion is converged by order 7 — moment-truncation error
+can be driven out of the comparison here". On the one system where truncation is designed
+out, this failure is the **leading** error term rather than a rounding detail. Everywhere
+else it sits four orders below truncation and does not matter.
+
+**But the window is narrow, and it closes exactly where it would be most useful.** Raising
+the cap from 15 to 21 doubled the failures found, 28 to 56, and added **no** priced rows:
+
+| K | typical `MBLSE` recon | typical pencil recon |
+|---|---|---|
+| 9–15 | 1e-07 to 4e-05 | 1e-13 to 2e-09 |
+| 19–21 | 1e-12 to 1e-04 | 2e-03 to 1e+05 |
+
+Past the pinning order the pencil is worse than the thing it would replace, on every system.
+Its usable range is **K ≤ 15**, and the recursion's failures are worst above that.
+
+**Verdict: keep it, scoped.** A fallback for failed sectors at K ≤ 15, whose entire measured
+value is on a system built to have no truncation error. That is a real but small niche, and
+the next step is a cost/benefit call on carrying a second realization route for it — not
+implementation.
+
+One limit on the sweep, stated because it looks like a disagreement otherwise: this study
+builds moments fresh at each order, while `order_convergence.py` builds once at the cap and
+slices. 3.3 records that the sliced route amplifies roundoff without bound once a
+realization stops reproducing its moments — the same `K = 19` particle reading 7.7e+03,
+3.3e+04 and 3.5e+04 at three different caps. This sweep therefore does not reproduce those
+magnitudes and is not evidence for or against them.
 
 ### C. Do not chase K≈40 on monomial moments
 
@@ -371,6 +428,7 @@ python -m baseline.studies.hankel_pencil --section deflation    # one section
 python -m baseline.studies.moment_noise                         # the §4.1 gate
 python -m baseline.studies.pencil_vs_mblse                      # the §6.B head-to-head
 python -m baseline.studies.affine_recursion                     # the §6.A test
+python -m baseline.studies.stall_sweep                          # the §6.B.1 sweep
 ```
 
 `baseline/arrays` is gitignored and reproducible, so a fresh worktree has none. Either run
