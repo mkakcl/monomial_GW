@@ -30,12 +30,15 @@ dichotomy to classify. Importing one from a code that gates on a Gram factorisat
 produced two false readings: the reconstructed-moment residual is measured at the *achieved*
 order, which the failure never touched, so it cannot indicate the cause.
 
-It was also said to report ~1e-15 at every step-down `[corrected 2026-08-12]`. That was a
-generalisation from a sweep capped at 15: lithium-hydride's particle carries ~1e+04 from
-nmom_max = 19, including at 21 and 23 where that sector has itself stepped down. So the
-residual does not diagnose a step-down, but it is not uninformative either - it says whether
-the realization reproduces the moments it was given, which is a different question from how
-many orders it claims, and the two can disagree by eighteen orders of magnitude.
+What the residual can and cannot tell you `[corrected 2026-08-12]`. It is measured at the
+*achieved* order, which the PSD failure never touched, so it cannot say why the recurrence
+stopped where it did - that much of the original claim stands. It was also asserted to sit
+at ~1e-15 at every step-down, and that was a generalisation from a sweep capped at 15:
+lithium-hydride's particle sector carries 3.30e+04 from nmom_max = 19 onward, having
+stepped down at 21 and 23. So the residual is not a diagnosis of the step-down, but it is
+not uninformative either - it says whether the realization reproduces the moments it was
+given, which is a separate question from how many orders it claims, and the two can
+disagree by twenty orders of magnitude.
 
 What the PSD gate costs is measurable, and is measured here. Loosening `neg_atol` and
 `neg_rtol` lets the recurrence accept the offending direction and continue; the study
@@ -59,6 +62,7 @@ records, ozone's included::
 import argparse
 import contextlib
 import io
+import math
 import traceback
 
 import numpy as np
@@ -114,6 +118,22 @@ DEFAULT_CAP = 23
 
 #: Reference the caps above were measured at.
 DEFAULT_XC = "pbe"
+
+
+#: Above this reconstructed-moment residual the realization does not reproduce the moments
+#: it was given, whatever its conserved order says. Healthy values across these systems are
+#: 2.4e-15 to 2e-14, and lithium-hydride's particle sector reaches ~3e+04 at nmom_max = 19
+#: while conserving 20 of 20 - so the gate beside it passes. Six orders above the observed
+#: band and twelve below that failure: nothing legitimate is near it, which is the point of
+#: putting it so far from both rather than tuning it.
+#:
+#: The magnitude of that failure is not reproducible and should not be quoted as though it
+#: were. The moments are built once at the cap and sliced, and the slicing is equal only to
+#: roundoff - but a realization that has stopped reproducing its moments amplifies roundoff
+#: without bound, so the same K=19 particle reads 7.7e+03 swept to 21, 3.3e+04 to 23 and
+#: 3.5e+04 to 19. What is stable is that it is twelve orders above this threshold and
+#: eighteen above a healthy residual. Quote the gap, not the number.
+RESIDUAL_MAX = 1e-8
 
 
 class ProbeError(Exception):
@@ -286,7 +306,7 @@ def gf_couplings(gw):
 def _runs(orders, step):
     """Split ascending orders into maximal runs that step by exactly `step`.
 
-    Both the probe verdicts and the footers collapse repeats into `K=a to b`, and
+    Both the probe verdicts and the residual warning collapse repeats into `K=a to b`, and
     both are wrong if they bridge an order the sweep skipped or that behaved differently.
     Written once, and given the stride rather than assuming the sweep is over odd orders.
     """
@@ -309,6 +329,115 @@ def _format_runs(runs):
 def _span(orders, step):
     """Format ascending orders as the runs they fall into."""
     return _format_runs(_runs(orders, step))
+
+
+def _residual_report(rows, stride):
+    """Report realizations whose reconstruction residual is unusable, or unmeasured.
+
+    Grouped by the blown sector's own conserved order rather than by the row: once that
+    sector pins, every higher order repeats its realization, and keying on the row would
+    count a fresh failure each time the *other* sector gained. Grouped again into contiguous
+    runs within that, because a sector can recover and blow up again at the same conserved
+    count, and those are two failed realizations rather than one long one.
+
+    `nan` is reported separately rather than filtered out. It is what `_by_sector` stores
+    when errors are not being calculated, and `nan > RESIDUAL_MAX` is False, so a sweep that
+    measured nothing about realization fidelity would otherwise be indistinguishable from
+    one where every residual was healthy.
+
+    Returns
+    -------
+    lines : list of str
+        Warnings to print, empty if every residual was measured and healthy.
+    """
+    blown, unmeasured, surplus = [], {}, {}
+    for row in rows:
+        for sector, entry in row["by_sector"].items():
+            if math.isnan(entry["residual"]):
+                unmeasured.setdefault(sector, []).append(row["order"])
+            elif entry["residual"] > RESIDUAL_MAX:
+                blown.append((row["order"], sector, entry["residual"], entry["conserved"]))
+        for sector, extra in row.get("surplus", {}).items():
+            if extra:
+                surplus.setdefault((sector, extra), []).append(row["order"])
+
+    lines = []
+    if surplus:
+        where = "; ".join(
+            f"{sector} handed {extra:+d} at {_span(orders, stride)}"
+            for (sector, extra), orders in sorted(surplus.items())
+        )
+        lines.append(
+            f"  NOTE: the build did not hand the recurrence what it was asked to conserve "
+            f"({where}), so `asked` describes the request and not the supply"
+        )
+    if unmeasured:
+        # Scoped to the orders it applies to: saying "this sweep" would retract evidence
+        # from every order that was measured and healthy.
+        where = "; ".join(
+            f"{sector} at {_span(orders, stride)}" for sector, orders in sorted(unmeasured.items())
+        )
+        lines.append(
+            f"  WARNING: no residual was calculated for {where}, so nothing there says "
+            "whether those realizations reproduce their moments - a healthy-looking row is "
+            "an absence of evidence, not evidence"
+        )
+    if not blown:
+        return lines
+
+    by_realization = {}
+    for order, sector, _, conserved in blown:
+        by_realization.setdefault((sector, conserved), []).append(order)
+
+    parts, distinct = [], 0
+    for (sector, conserved), orders in sorted(by_realization.items()):
+        # One split, so the count and the printed span cannot drift apart.
+        runs = _runs(orders, stride)
+        distinct += len(runs)
+        parts.append(f"{sector} at {conserved} conserved over {_format_runs(runs)}")
+
+    worst = max(blown, key=lambda b: b[2])
+    lines.append(
+        f"  WARNING: reconstructed-moment residual reaches {worst[2]:.2e} in the "
+        f"{worst[1]} sector at K={worst[0]}, above {RESIDUAL_MAX:g} - {distinct} distinct "
+        f"realization(s): {'; '.join(parts)}. That realization does not reproduce the "
+        "moments it was given, whatever its conserved order says, and no gate covers it"
+    )
+    return lines
+
+
+def _classify_residuals(before, reached):
+    """Split the loosened run's sectors by what their residual says, and who did it.
+
+    Four outcomes, because collapsing them loses the fact that matters. A sector loosening
+    pushed past `RESIDUAL_MAX` is a cost of the knob; one that was already past it is the
+    ungated failure this study reports and not the knob's doing, and reading it as a cost
+    would void orders another sector genuinely bought. A `nan` residual - what `_by_sector`
+    stores when errors are not being calculated - is neither: it means the check did not
+    run, and every comparison against it is False, so without this it would silently land
+    in "already" and assert the opposite of the truth.
+
+    Returns
+    -------
+    caused, already, repaired : dict
+        Sector to residual, for blow-ups the loosening created, ones that predate it, and
+        ones it fixed. The last is easy to omit and produces the worst reading: with the
+        conserved counts unchanged the verdict would say "no sector moves when it is
+        loosened" for a run where the loosened realization is the only one reproducing its
+        own moments.
+    unknown : set
+        Sectors whose residual is `nan` at either end, so nothing can be said.
+    """
+    caused, already, repaired, unknown = {}, {}, {}, set()
+    for sector, entry in reached.items():
+        after, prior = entry["residual"], before[sector]["residual"]
+        if math.isnan(after) or math.isnan(prior):
+            unknown.add(sector)
+        elif after > RESIDUAL_MAX:
+            (already if prior > RESIDUAL_MAX else caused)[sector] = after
+        elif prior > RESIDUAL_MAX:
+            repaired[sector] = after
+    return caused, already, repaired, unknown
 
 
 def _flush_probe(pending, stride):
@@ -472,10 +601,11 @@ def run(name, cap, xc=DEFAULT_XC):
             "  NOTE: * marks dHOMO, diff and closure at an order that realized identically "
             "to the order before it, so the value is fixed by that rather than measured "
             "afresh - for the two shifts it makes them zero, for the spread it repeats a "
-            "still-live measurement. Everything else describing that realization freezes with "
-            "it and carries no mark - cons, resid, HOMO, Z, MO, dN and gates are all "
-            "repeats too, because they are readings of it rather than comparisons of two; "
-            "short alone keeps growing, being the gap to a request that keeps rising"
+            "still-live measurement. cons, HOMO, Z, MO, dN and gates freeze with it and carry "
+            "no mark, being readings of that realization rather than comparisons of two. "
+            "resid is not marked either but is not guaranteed identical: a blown "
+            "realization amplifies roundoff, so it can move between two marked rows. short "
+            "keeps growing, being the gap to a request that keeps rising"
         )
 
     # Probe every stepped-down order, not just the first and not one per distinct achieved
@@ -512,6 +642,7 @@ def run(name, cap, xc=DEFAULT_XC):
                 f"loosened run failed: {type(error).__name__}: {error}"
             )
             continue
+        caused, already, repaired, unknown = _classify_residuals(before, reached)
         gained = {k: reached[k]["conserved"] - before[k]["conserved"] for k in before}
         # `abs` because the sign belongs to the verb: "loses hole -2" reads as a gain.
         up = ", ".join(f"{k} +{v}" for k, v in gained.items() if v > 0)
@@ -526,6 +657,32 @@ def run(name, cap, xc=DEFAULT_XC):
             verdict = f"loosening the gate made it worse: {down}"
         else:
             verdict = "not the PSD tolerance: no sector moves when it is loosened"
+        # Appended rather than replacing the verdict: whether orders were bought and whether
+        # the result reproduces its moments are two separate facts about two possibly
+        # different sectors.
+        if caused:
+            cost = ", ".join(f"{k} at {v:.2e}" for k, v in caused.items())
+            verdict += (
+                f" - but loosening pushes {cost} past {RESIDUAL_MAX:g}, so whatever those "
+                "sectors conserve does not reproduce their moments"
+            )
+        if already:
+            note = ", ".join(f"{k} at {v:.2e}" for k, v in already.items())
+            verdict += (
+                f" (note {note}, above {RESIDUAL_MAX:g} both before and after, so that is "
+                "not the loosening's doing)"
+            )
+        if repaired:
+            fixed = ", ".join(f"{k} to {v:.2e}" for k, v in repaired.items())
+            verdict += (
+                f" - and it brings {fixed} back under {RESIDUAL_MAX:g}, so the loosened "
+                "realization is the one that reproduces its moments"
+            )
+        if unknown:
+            verdict += (
+                f" (residual unavailable for {', '.join(sorted(unknown))}, so nothing here "
+                "says whether the realization reproduces its moments)"
+            )
         body = (
             f"conserved {_sectors(before, 'conserved')} at residual "
             f"{_sectors(before, 'residual', '{:.2e}')}; with neg_atol/neg_rtol x{LOOSEN:g} it "
@@ -560,20 +717,8 @@ def run(name, cap, xc=DEFAULT_XC):
     # set catches it: lithium-hydride's particle sector conserves 20 of 20 at nmom_max=19,
     # so its realization gate passes, while missing its own input moments by four orders of
     # magnitude. Until a gate covers it, the study says so.
-    surplus = {}
-    for row in rows:
-        for sector, extra in row["surplus"].items():
-            if extra:
-                surplus.setdefault((sector, extra), []).append(row["order"])
-    if surplus:
-        where = "; ".join(
-            f"{sector} handed {extra:+d} at {_span(orders, stride)}"
-            for (sector, extra), orders in sorted(surplus.items())
-        )
-        print(
-            f"  NOTE: the build did not hand the recurrence what it was asked to conserve "
-            f"({where}), so `asked` describes the request and not the supply"
-        )
+    for line in _residual_report(rows, stride):
+        print(line)
 
     weights = [r["homo_z"] for r in rows if r.get("homo_z") is not None]
     worst_z = min(weights) if weights else None
@@ -646,20 +791,22 @@ def main():
                 f"its limit needs; --cap {cap} stops short of it, so the table below does "
                 "not reach a limit."
             )
-        if args.cap is None:
-            if name in NO_MEASURED_LIMIT:
-                print(
-                    f"\n  NOTE: {name} has no realization limit to reach - its particle "
-                    "sector pins early while the hole gains indefinitely - so this cap is a "
-                    "reading budget and the table below does not end at a limit."
-                )
-            elif measured is None:
-                # Silence here would read as "this cap was measured", which is the reading
-                # that made the old fixed cap of 15 wrong.
-                print(
-                    f"\n  NOTE: {name} has no measured cap; using the {DEFAULT_CAP} default. "
-                    "Check its realization pins inside that before quoting the table."
-                )
+        # Both notes describe the system, not how the cap was chosen, so neither is
+        # conditional on `--cap` being absent: an explicit cap does not give a system a
+        # limit it does not have.
+        if name in NO_MEASURED_LIMIT:
+            print(
+                f"\n  NOTE: {name} has no realization limit to reach - its particle sector "
+                "pins early while the hole gains indefinitely - so this cap is a reading "
+                "budget and the table below does not end at a limit."
+            )
+        elif measured is None:
+            # Silence here would read as "this cap was measured", which is the reading that
+            # made the old fixed cap of 15 wrong.
+            print(
+                f"\n  NOTE: {name} has no measured cap; using the {DEFAULT_CAP} default. "
+                "Check its realization pins inside that before quoting the table."
+            )
         try:
             run(name, cap, xc=args.xc)
         except ProbeError as error:

@@ -194,12 +194,6 @@ directory = "cov_html"
 testpaths = [
     "tests",
 ]
-# `baseline/` is deliberately not part of the distribution (see `packages` above), so a
-# test that imports it needs the repository root on the path. Without this, bare `pytest`
-# fails collection for the whole suite and only `python -m pytest` works.
-pythonpath = [
-    ".",
-]
 addopts = [
     "--durations=0",
 ]

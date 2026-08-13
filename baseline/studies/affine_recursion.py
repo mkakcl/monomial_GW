@@ -66,6 +66,7 @@ from baseline.studies.pencil_vs_mblse import (
     pencil_self_energy,
     reconstruction_error,
 )
+from momentGW.gw import achieved_iteration
 
 #: Orders to test.  The lithium-hydride stall appears at 7 and persists.
 DEFAULT_ORDERS = (5, 7, 9, 11)
@@ -94,7 +95,7 @@ def _self_energy(solver, centre, scale):
     dyson.Lehmann
         The self-energy in original coordinates.
     """
-    iteration = solver.max_cycle if solver.max_cycle_achieved is None else solver.max_cycle_achieved
+    iteration = achieved_iteration(solver)
     nphys = solver.nphys
     jacobi = dyson_util.build_block_tridiagonal(
         [solver.on_diagonal[i] for i in range(iteration + 2)],
@@ -137,7 +138,7 @@ def run_recursion(se_static, moments, options, centre=0.0, scale=1.0):
         solver.kernel()
         self_energy = _self_energy(solver, centre, scale)
 
-    achieved = solver.max_cycle if solver.max_cycle_achieved is None else solver.max_cycle_achieved
+    achieved = achieved_iteration(solver)
     return {
         "conserved": solver.nmom_conserved(achieved),
         "requested": solver.nmom_conserved(solver.max_cycle),
