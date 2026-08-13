@@ -15,7 +15,9 @@ import pytest
 from baseline.studies.order_convergence import (
     LayoutError,
     _by_sector,
+    _classify_residuals,
     _pin_key,
+    _residual_report,
     _runs,
     _sectors,
     _span,
@@ -102,6 +104,148 @@ class TestSectors:
 
     def test_the_format_is_applied(self):
         assert _sectors(sectors(1, 1, 1.1e-14, 3.3e4), "residual", "{:.2e}") == "1.10e-14/3.30e+04"
+
+
+class TestClassifyResiduals:
+    """The split that decides whether a probe verdict blames the loosening.
+
+    Reporting a pre-existing blow-up as a cost of loosening voids orders another sector
+    genuinely bought, which is what an earlier version of this did on lithium-hydride.
+    """
+
+    def test_healthy_everywhere_says_nothing(self):
+        caused, already, repaired, unknown = _classify_residuals(sectors(6, 8), sectors(8, 8))
+
+        assert (caused, already, repaired, unknown) == ({}, {}, {}, set())
+
+    def test_a_blow_up_the_loosening_created_is_its_fault(self):
+        before = sectors(6, 8, 1e-15, 1e-15)
+        reached = sectors(8, 8, 1e3, 1e-15)
+
+        caused, already, repaired, unknown = _classify_residuals(before, reached)
+
+        assert caused == {"hole": 1e3}
+        assert already == {} and repaired == {} and unknown == set()
+
+    def test_a_blow_up_that_predates_it_is_not(self):
+        """Lithium-hydride at nmom_max=19: the particle is broken before and after."""
+        before = sectors(6, 20, 3.6e-15, 3.3e4)
+        reached = sectors(8, 20, 2.2e-13, 3.3e4)
+
+        caused, already, repaired, unknown = _classify_residuals(before, reached)
+
+        assert already == {"particle": 3.3e4}
+        # And the hole, which actually gained, is not implicated.
+        assert caused == {} and repaired == {} and unknown == set()
+
+    def test_a_missing_residual_is_neither(self):
+        """`nan` is what `_by_sector` stores when errors are off.
+
+        Every comparison against it is False, so without an explicit branch the sector lands
+        in `already` and the verdict asserts the blow-up predates a loosening it may not.
+        """
+        before = sectors(6, 8, float("nan"), 1e-15)
+        reached = sectors(8, 8, 1e3, 1e-15)
+
+        caused, already, repaired, unknown = _classify_residuals(before, reached)
+
+        assert unknown == {"hole"}
+        assert caused == {} and already == {} and repaired == {}
+
+
+def rows_with(*per_order):
+    """Build the row list `_residual_report` reads.
+
+    Each entry is `(order, hole_residual, particle_residual)`, optionally followed by the
+    two conserved orders - the grouping key is `(sector, conserved)`, so a fixture that
+    leaves conserved fixed cannot exercise it.
+    """
+    rows = []
+    for order, hole, particle, *conserved in per_order:
+        h, pt = conserved or (1, 1)
+        rows.append({"order": order, "by_sector": sectors(h, pt, hole, particle), "surplus": {}})
+    return rows
+
+
+class TestResidualReport:
+    """The footer that reports realizations which do not reproduce their moments.
+
+    This is the study's only claim that a calculation is unusable, and the ROADMAP quotes
+    its realization count, so a miscount is a misreported finding rather than a cosmetic bug.
+    """
+
+    def test_a_healthy_sweep_reports_nothing(self):
+        assert _residual_report(rows_with((19, 1e-15, 1e-14), (21, 1e-15, 1e-14)), 2) == []
+
+    def test_a_pinned_blow_up_is_one_realization_however_many_orders_repeat_it(self):
+        """Once a sector pins, every higher order repeats the same failed realization."""
+        rows = rows_with((19, 1e-15, 3e4), (21, 1e-15, 3e4), (23, 1e-15, 3e4))
+
+        (line,) = _residual_report(rows, 2)
+
+        assert "1 distinct realization(s)" in line
+        assert "K=19 to 23" in line
+
+    def test_recovering_and_blowing_up_again_is_two(self):
+        """The case the count used to get wrong by keying on the sector alone.
+
+        Same sector, same conserved order, but a healthy order in between: two separate
+        failed realizations, not one run spanning an order that was fine.
+        """
+        rows = rows_with((19, 1e-15, 3e4), (21, 1e-15, 1e-14), (23, 1e-15, 3e4), (25, 1e-15, 3e4))
+
+        (line,) = _residual_report(rows, 2)
+
+        assert "2 distinct realization(s)" in line
+        assert "K=19, K=23 to 25" in line
+
+    def test_an_unmeasured_residual_is_reported_not_dropped(self):
+        """`nan > RESIDUAL_MAX` is False, so filtering would read as a clean sweep."""
+        (line,) = _residual_report(rows_with((19, float("nan"), 1e-14)), 2)
+
+        assert "no residual was calculated for hole" in line
+        assert "absence of evidence" in line
+
+    def test_unmeasured_and_blown_are_both_reported(self):
+        lines = _residual_report(rows_with((19, float("nan"), 3e4)), 2)
+
+        assert len(lines) == 2
+        assert "no residual was calculated" in lines[0]
+        assert "1 distinct realization(s)" in lines[1]
+
+    def test_the_same_sector_at_two_conserved_orders_is_two_realizations(self):
+        """The `(sector, conserved)` key, which a fixed-conserved fixture cannot reach.
+
+        Consecutive orders, so contiguity does not separate them - only the conserved order
+        does, and that is what makes them two realizations rather than one run.
+        """
+        rows = rows_with((19, 1e-15, 3e4, 1, 20), (21, 1e-15, 3e4, 1, 22))
+
+        (line,) = _residual_report(rows, 2)
+
+        assert "2 distinct realization(s)" in line
+        assert "particle at 20 conserved over K=19" in line
+        assert "particle at 22 conserved over K=21" in line
+
+    def test_the_worst_residual_is_the_one_named(self):
+        rows = rows_with((19, 1e-15, 3e4), (21, 5e6, 3e4))
+
+        (line,) = _residual_report(rows, 2)
+
+        assert "reaches 5.00e+06 in the hole sector at K=21" in line
+
+
+class TestClassifyResidualsRepair:
+    """Loosening can also fix a blown residual, which is the outcome easiest to drop."""
+
+    def test_a_repaired_sector_is_reported(self):
+        before = sectors(6, 20, 1e-15, 3.3e4)
+        reached = sectors(6, 20, 1e-15, 1e-15)
+
+        caused, already, repaired, unknown = _classify_residuals(before, reached)
+
+        assert repaired == {"particle": 1e-15}
+        assert caused == {} and already == {} and unknown == set()
 
 
 class TestLayoutGuard:
