@@ -1,7 +1,8 @@
 # The one-shot block Hankel pencil: momentGW's analogue of Cayley's Toeplitz QR
 
-Written 2026-08-12; §4 and §6.A updated the same day once the noise gate was measured,
-and §5 and §6.B once the head-to-head was.
+Written 2026-08-12 and revised the same day as each proposal was measured: §4 and §6.A by
+the noise gate, §5 and §6.B by the head-to-head, then §6.A again — to a rejection — by the
+affine test.
 **Nothing here is implemented.** Every number is reproduced by
 [`baseline/studies/hankel_pencil.py`](baseline/studies/hankel_pencil.py) and
 [`baseline/studies/moment_noise.py`](baseline/studies/moment_noise.py) on this machine
@@ -31,9 +32,12 @@ Four things qualify that, and they change what is worth building:
    monomial coordinates the rank cut that makes the singular Gram usable has a gap of
    **0.1 decades** — it is not identifiable at all. After an exact affine map it is
    **7.8 to 10.8 decades**. Same data, same algorithm.
-3. **That renormalisation is free, exact, and helps the *existing* recursion too** — it is
-   not tied to the new backend. It is the single cheapest item here, and half of it is
-   already implemented and tested in dyson, just not on the compute path.
+3. **That renormalisation does *not* help the existing recursion — measured, §6.A.** It is
+   load-bearing for the pencil and irrelevant to `MBLSE`, which never forms a Hankel matrix.
+   Applied to the recursion it leaves the stall untouched to three significant figures, even
+   given the true support, and costs up to 500x accuracy on healthy sectors through the
+   binomial transform's own cancellation. §3's conditioning gain is real but applies to a
+   matrix the production path does not build.
 4. **The head-to-head settles what the pencil is for, and it is less than proposed.**
    Measured against `MBLSE` on the same real moments (§6.B): where the recursion is healthy
    it loses by three to five decades, so it is not a backend; where the recursion *stalls*
@@ -42,8 +46,9 @@ Four things qualify that, and they change what is worth building:
    diagnostic either, and the two routes' frontier energies agree to ≤1.1e-8 eV — the extra
    fidelity buys sub-µeV. The remaining niche is a fallback for stalled sectors.
 
-Revised order of work (§6): **(A) affine renormalisation, (B) find a case where a stall
-costs more than a µeV — or close the pencil out, (C) do not chase K≈40.**
+Where this leaves §6: **(A) is closed — measured and rejected.** (B) is narrowed to
+finding a case where a stall costs more than a µeV, or closing the pencil out too. (C)
+stands: do not chase K≈40 on monomial moments.
 
 ---
 
@@ -238,30 +243,49 @@ not been swept.
 
 ## 6. Proposed order of work
 
-### A. Affine renormalisation in front of the existing recursion — do this first
+### A. Affine renormalisation — measured, and rejected
 
-Independent of any new backend, and the best ratio of gain to effort here.
+**Do not build this.** Measured by
+[`affine_recursion.py`](baseline/studies/affine_recursion.py), which applies the exact
+transform to the moments, runs the recursion, and maps the poles back, scoring
+reconstruction against the *original* moments throughout. Three systems, both sectors,
+orders 7 and 11, three centre/scale choices.
 
-`shift_moments` already exists and is tested at
-`_mbl.py:70`, but it is used **only
-in the error-reporting path** (`_mbl.py:668`,
-comparing predicted against reference moments about the chemical potential). It never
-touches the moments that feed the recursion.
+**It does not move the stall.** On the lithium-hydride hole sector every variant is
+identical to three significant figures — including `support`, which is handed the true
+pole range and so is the best the transform could possibly do:
 
-Steps:
+| variant | μ | s | conserved | cycles | poles | recon |
+|---|---|---|---|---|---|---|
+| none | 0.000 | 1.000 | 6/12 | 2/5 | 57 | 7.04e-06 |
+| centre-only | −2.759 | 1.000 | 6/12 | 2/5 | 57 | 7.04e-06 |
+| trace | −2.759 | 1.617 | 6/12 | 2/5 | 57 | 7.04e-06 |
+| support | −3.737 | 3.125 | 6/12 | 2/5 | 57 | 7.04e-06 |
 
-1. ~~Measure the real moment noise on this path first.~~ **Done — §4.1.** 1.4e-15 to
-   8.9e-15, set by eta0 alone and damped by the convolution rather than amplified.
-2. Add the scale to the existing shift (`s^{-n}`), giving the full affine transform.
-3. Apply it before `initialise_recurrence`; undo as `J → sJ + μI` on the block-tridiagonal
-   assembled at [`gw.py:452`](momentGW/gw.py#L452). Exact similarity — assert it.
-4. Choose μ, s from the first three moments (§3), per sector.
-5. Re-record `baseline/` and check: the QP energies must be unchanged within tolerance, and
-   the recursion's reported `error_inv_sqrt` should fall.
+**And on healthy sectors it costs accuracy**, never gaining more than about 2x and
+frequently losing one to three decades:
 
-Gate: no baseline case moves beyond its recorded tolerance, and at least the hole sectors
-show a measurable drop in recursion error metrics. This is a **fork-only** change; see
-`CLAUDE.md` on upstream.
+| case, order 11 | none | best transformed |
+|---|---|---|
+| lih_hf particle | 2.57e-15 | 1.31e-12 *(support)* — **500x worse** |
+| water_hf particle | 5.28e-15 | 5.13e-14 *(support)* |
+| ozone_pbe hole | 6.66e-15 | 6.43e-14 *(support)* |
+
+**The mechanism is the transform's own arithmetic.** ROADMAP 3.2 already noted that
+`MBLSE` runs a block Lanczos recurrence and **never forms a Hankel matrix** — so §3's
+`cond(H0)` gains apply to a matrix the production path does not build. In exact arithmetic
+the transform is a similarity and the recursion is invariant under it; in floating point
+all it adds is the binomial sum `Σ_k C(n,k)(−μ)^{n−k} T_k`, which for μ ≈ −23 and n = 11
+cancels terms of order 1e15 against each other. That is the loss, and it explains why the
+damage tracks |μ|: water and ozone, with the largest shifts, degrade most.
+
+So §3's headline result — a 13.7x to 2.3e6x conditioning gain — is real but **irrelevant to
+this code**. It would matter to a route that forms the Gram, which is the pencil (§6.B),
+and there it is already load-bearing rather than optional.
+
+This closes the two ROADMAP 3.2 items *"affinely center and scale the hole and particle
+spectral sectors separately"* and *"transform raw monomial moments to the scaled basis
+before realization"*, on measurement rather than on preference.
 
 ### B. The pencil — measured, and the answer is narrower than proposed
 
@@ -299,13 +323,26 @@ to 7e-6. The pencil finds the 11 extra poles and holds all 12 moments to 1.4e-11
 
 **Two things stop this being a bigger claim than it is.**
 
-- **The stall is already reported.** `max_cycle_achieved = 2` against a requested
-  `max_cycle = 5`, and `nmom_conserved = 6`, which `_frontier_from_solvers`
+- **The stall is already reported, and already diagnosed.** `max_cycle_achieved = 2`
+  against a requested `max_cycle = 5`, and `nmom_conserved = 6`, which `_frontier_from_solvers`
   ([`gw.py:536`](momentGW/gw.py#L536)) already reads into the frontier readout, alongside
   `nmom_conserved_requested` and `nmom_conserved_achieved` in the Dyson diagnostics
   ([`gw.py:118-119`](momentGW/gw.py#L118-L119)). The pencil is **not** detecting an
   unreported failure — the premise of the old step 2 was wrong. What it does is *proceed
   past a failure the code already admits to*.
+
+  ROADMAP 3.2 goes further and names the cause: `MBLSE.kernel` steps down in exactly one
+  place, **a PSD failure on the next block's square root**, and loosening the gate
+  (`neg_atol`/`neg_rtol`) by 1e4 already buys lithium-hydride 2 more orders at 60x the
+  residual. So the pencil is not escaping the limit — it has no PSD gate, deflating on
+  eigenvalue magnitude instead, and sits *further along the same trade* the loosened gate
+  makes. That is a weaker and more accurate claim than "a third route gets past it".
+
+  One number needs care when reading this against the roadmap's tables. Those measure the
+  residual at the **achieved** order, which is why they stay at ~1e-15 through every
+  step-down; the 7.0e-6 here is measured against the **requested** moment set — the error
+  in what the caller asked for and did not get. Neither is wrong, and only the second says
+  what a step-down costs.
 - **It barely matters physically at these orders.** Frontier energies from the two routes
   agree to ≤1.1e-8 eV everywhere, and the stalled lih_hf case differs by 5.6e-7 eV on the
   HOMO. The 5 extra decades of moment fidelity buy sub-µeV.
@@ -333,6 +370,7 @@ python -m baseline.studies.hankel_pencil                        # all four secti
 python -m baseline.studies.hankel_pencil --section deflation    # one section
 python -m baseline.studies.moment_noise                         # the §4.1 gate
 python -m baseline.studies.pencil_vs_mblse                      # the §6.B head-to-head
+python -m baseline.studies.affine_recursion                     # the §6.A test
 ```
 
 `baseline/arrays` is gitignored and reproducible, so a fresh worktree has none. Either run
