@@ -59,6 +59,20 @@ def achieved_iteration(solver):
     return solver.max_cycle if solver.max_cycle_achieved is None else solver.max_cycle_achieved
 
 
+#: Above this reconstructed-moment residual, a realization does not reproduce the moments it
+#: was given, whatever its conserved order says. Healthy values across the acceptance-gate
+#: systems are 2.4e-15 to 2e-14; lithium-hydride's particle sector reaches ~3e+04 at
+#: `nmom_max = 19` while conserving 20 of the 20 orders requested, so the realization gate
+#: beside it passes. Six orders above the observed band and twelve below that failure:
+#: nothing legitimate is near it, which is why it is placed far from both rather than tuned.
+#:
+#: The magnitude of that failure is not reproducible and should not be quoted as though it
+#: were - a realization that has stopped reproducing its moments amplifies roundoff without
+#: bound, so the same realization reads 7.7e+03, 3.3e+04 or 3.5e+04 depending only on how
+#: far the sweep that found it went. The gap is the finding, not the number.
+RESIDUAL_MAX = 1e-8
+
+
 #: Weight below which a multiplet is a satellite rather than a quasiparticle. A
 #: moment-truncated spectrum carries a forest of low-weight poles between the HOMO and the
 #: true LUMO, and a permissive threshold picks one of them as the frontier.
@@ -1046,6 +1060,20 @@ class GW(BaseGW):
                     f"{record['nmom_conserved_achieved']} of "
                     f"{record['nmom_conserved_requested']} moments"
                 )
+            errors = record["errors"]
+            if errors is None:
+                logging.warn(
+                    f"[red]Realization fidelity unmeasured[/] ({sector}): "
+                    "`calculate_errors` is off, so nothing checked whether the realization "
+                    "reproduces the moments it was given"
+                )
+            elif errors.max_relative_frobenius > RESIDUAL_MAX:
+                logging.warn(
+                    f"[red]Realization does not reproduce its moments[/] ({sector}): "
+                    f"residual {errors.max_relative_frobenius:.2e} above {RESIDUAL_MAX:g}, "
+                    f"while conserving {record['nmom_conserved_achieved']} of "
+                    f"{record['nmom_conserved_requested']} moments"
+                )
 
         # Initialise the solver
         solver = FockLoop(self, se=se, **self.fock_opts)
@@ -1143,8 +1171,27 @@ class GW(BaseGW):
 
         # Record the gates the calculation is judged against, so that the caller can
         # ask whether it converged instead of assuming that it did
+        # A sector can conserve every order it was asked for and still fail to reproduce
+        # the moments it was given. `realization` above reads the conserved order and
+        # cannot see that, so it is gated separately: on lithium-hydride at
+        # `nmom_max = 19` the particle sector conserves 20 of 20 with a residual eighteen
+        # orders above the healthy band, and only an unrelated step-down in the hole kept
+        # `converged` from reading true. An unmeasured residual fails the gate rather than
+        # passing it -- with `calculate_errors` off nothing here has checked the
+        # realization, and that is not the same as having checked it and found it sound.
+        residual = {
+            sector: (
+                float(record["errors"].max_relative_frobenius)
+                if record["errors"] is not None
+                else None
+            )
+            for sector, record in realization.items()
+        }
         gates = {
             "realization": not any(r["order_reduced"] for r in realization.values()),
+            "residual": all(
+                value is not None and value <= RESIDUAL_MAX for value in residual.values()
+            ),
             "nelec": bool(abs(error) <= nelec_tol),
         }
         if order_record is not None:
@@ -1153,6 +1200,8 @@ class GW(BaseGW):
             gates["fock_loop"] = bool(fock_conv)
         self.dyson_diagnostics = {
             "realization": realization,
+            "residual": residual,
+            "residual_max": float(RESIDUAL_MAX),
             "moment_error": {"hole": moment_error[0], "particle": moment_error[1]},
             "nelec_error": float(error),
             "nelec_tol": float(nelec_tol),
