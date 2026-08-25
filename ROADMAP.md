@@ -425,8 +425,48 @@ Three designs for that were tried and rejected; the failures are recorded there.
   time - and that attribution is the first step, not the port. Ordered after the residual
   gate under the acceptance gate below, because a degradation that nothing gates on is the
   more urgent of the two.
-  Build this once that attribution is done: the source-agnostic `realization/` package in
-  that repo is the thing to reuse, behind an option with monomial remaining the default.
+  **Attributed 2026-08-25** (`baseline/studies/residual_attribution.py`), and the answer is
+  neither of the two offered: **it is the recursion, not the basis and not the molecule.**
+  Four controls, each removing one candidate:
+
+  - *Not the molecule.* The same molecule, basis, order and moment basis from a
+    Hartree-Fock reference conserves 20 of 20 at a residual of **2.65e-14**. Only the
+    starting point differs from the PBE run's **7.69e+03**.
+  - *Not the moments being unrealizable at that order.* The one-shot block Hankel pencil,
+    given the identical 20 moments, reproduces every one of them at **2.13e-08** - eleven
+    orders below the recursion, and uniform across orders rather than divergent.
+  - *Not the dynamic range.* The obvious reading of a sequence reaching `|T_19| = 2.5e+09`
+    is that the recursion drowns in it. The Hartree-Fock moments grow **faster** - 4.13x
+    per order against 3.39x, ending at `1.19e+11`, fifty times larger - and are fine.
+  - *What it is.* The recursion tracks the pencil to ~1e-14 through order 9 and then
+    diverges geometrically, roughly 85x per order: 7.5e-12 at 11, 5.5e-08 at 13, 3.6e-04
+    at 15, 1.9 at 17, 7.7e+03 at 19. The reference-dependence and the clean geometric law
+    both point at the recursion's arithmetic on this particular measure.
+
+  **This removes the justification that unparked the item, without restoring the old
+  premise.** The trigger fired - a residual really does degrade, which is what the parking
+  instruction asked for - but the remedy this item proposes is aimed at something the
+  attribution rules out. A modified-moment basis is proposed to fix the conditioning of raw
+  monomial Hankel matrices; here a *different algorithm on the same raw monomial moments*
+  reproduces them eleven orders better, so those moments carry the information and the raw
+  basis is not what is losing it.
+
+  What the evidence points at instead is the recursion. Loss of orthogonality in a block
+  Lanczos recursion is the standard candidate and would be repaired by re-orthogonalisation,
+  not by a change of basis - but that is a hypothesis and is **not measured**, and naming it
+  here is not evidence for it. Measuring it is the next step, and it belongs in 3.3 or a new
+  item rather than this one.
+
+  Two things not to over-read. The pencil's 2.13e-08 is uniform but is itself six orders
+  above the 1e-15 band a healthy recursion achieves, so this is not "the pencil solves it";
+  it is "the pencil shows the moments are not the problem". And the hole-sector rows are not
+  a route comparison at all: the recursion stops at 6 of 20 there and is scored over the
+  orders it claims while the pencil is scored over all of them, which is why the study marks
+  those rows not comparable.
+
+  Build this only if a route is found where the raw monomial moments themselves are the
+  loss, which this is not: the source-agnostic `realization/` package in `mkakcl/chebyshev-gw`
+  remains the thing to reuse, behind an option with monomial remaining the default.
 - [ ] Keep the raw monomial backend as an oracle at low order during migration.
 
 ### 3.3 Adaptive moment order
