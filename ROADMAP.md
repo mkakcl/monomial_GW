@@ -451,11 +451,39 @@ Three designs for that were tried and rejected; the failures are recorded there.
   reproduces them eleven orders better, so those moments carry the information and the raw
   basis is not what is losing it.
 
-  What the evidence points at instead is the recursion. Loss of orthogonality in a block
-  Lanczos recursion is the standard candidate and would be repaired by re-orthogonalisation,
-  not by a change of basis - but that is a hypothesis and is **not measured**, and naming it
-  here is not evidence for it. Measuring it is the next step, and it belongs in 3.3 or a new
-  item rather than this one.
+  What the evidence points at instead is the recursion, and **it has since been measured**
+  (`baseline/studies/spurious_pole.py`, 2026-08-25). Loss of orthogonality was named here as
+  the standard candidate; it is **not** the cause. `force_orthogonality` changes the residual
+  by nothing at all, and with it off - so the recursion's own order-zero coefficients survive
+  - the *healthy* Hartree-Fock run drifts from orthonormality further than the failing one at
+  every iteration through 9 (1.0e-09 against 7.4e-11). Conditioning of the inverted block is
+  real but nowhere near sufficient on its own: condition 24 in the failing run against 4 in
+  the healthy one cannot produce an eighteen-order error.
+
+  **The cause is a single spurious pole.** The failing realization contains one at
+  **301 Ha**, 58x beyond a spectrum otherwise clustered below 5.14 - which is exactly where
+  the independent pencil realization puts its own edge, so 5.14 is the physical edge and 301
+  is not a pole of anything. Reconstructing moment `n` weights every pole by `e**n`, so an
+  outlier invisible at `n = 0` dominates at `n = 19`: the reconstructed moment comes out at
+  1.9e+13 against an input of 2.5e+09, and that ratio *is* the residual. It also explains the
+  geometric law - each order multiplies the outlier's contribution by `e_out` and the true
+  moment by its own growth rate, giving 301/3.4 = 89 against an observed 62-87 per order.
+
+  The three appear together and only together. Sweeping orders 13 to 21 in both references,
+  the spurious pole, the collapse of the final block's smallest singular value (5.03e-02
+  against ~0.5 everywhere else) and the residual all arrive at `K = 19` in PBE and never in
+  Hartree-Fock. What is *not* established is why that block goes near-singular at that order
+  in one reference and not the other: the correlation is exact across every order measured,
+  and a near-singular block is the natural source of a spurious eigenvalue once its inverse
+  square root is applied, but the study measures the coincidence and not the mechanism.
+
+  **This is directly actionable, and more specifically than the residual gate.** A pole 58x
+  beyond the support implied by the moments is detectable on its own terms and without
+  reconstructing anything: the moments bound the support, the pencil estimates the same edge
+  from the same data, and either would have rejected 301 Ha. The residual gate catches this
+  failure - it reads 7.69e+03 against a threshold of 1e-8 - but it catches it *after* the
+  fact and cannot say which pole is wrong. **A support check on the realized poles is the
+  next item**, and it belongs beside the residual gate rather than in this one.
 
   Two things not to over-read. The pencil's 2.13e-08 is uniform but is itself six orders
   above the 1e-15 band a healthy recursion achieves, so this is not "the pencil solves it";
