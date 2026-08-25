@@ -333,7 +333,11 @@ formed; no particle-hole squared matrix is allowed.
 
 ## Milestone 3 - Higher-order moment stability and propagated errors
 
-**Status: Planned - third implementation milestone**
+**Status: In progress - the acceptance gate passes on all five criteria as of 2026-08-25,
+and 12 of 17 work items are done. What remains is 3.1's tolerance derivation, 3.2's
+attribution and port, 3.4's two validation items, and one known limitation under 3.3 that
+has no checkbox: past a step-down `moment_order` can read true beside `realization` false.
+Three designs for that were tried and rejected; the failures are recorded there.**
 
 ### 3.1 End-to-end error budget
 
@@ -579,7 +583,7 @@ below.
 
 ### Acceptance gate
 
-**Four of five pass** `[2026-08-12]`. Tables from
+**All five pass** `[2026-08-25: the fifth was gated; see it for what the gate does and does not cover]`. Tables from
 [`baseline/studies/order_convergence.py`](baseline/studies/order_convergence.py), one moment
 build per system, PBE / cc-pVDZ. All three pin at `nmom_max = 19` and are swept past it -
 to 23 for water and lithium-hydride, and to 31 for ozone, which is the small-gap case and
@@ -618,11 +622,13 @@ correlated multiplets, which survives a level crossing.
   than asserted. `converged` is the conjunction of the gates, so this holds even where an
   individual gate misreads - see the known limitation under 3.3, where `moment_order` can be
   true beside `realization` false. It is the conjunction that is safe to read; the
-  individual gates are not yet. The qualifier is the point: a residual blow-up is a failure
-  and is *not* gated, per the criterion below, so this criterion is only as strong as the
-  gate set it quantifies over.
-- **Not passed** `[2026-08-12: was recorded as passed against a sweep that stopped too
-  early]` - the reported bounds are *not* always consistent with the observed moment errors.
+  individual gates are not yet. The qualifier remains the point - this criterion is only as
+  strong as the gate set it quantifies over - but the gap it named is closed: a residual
+  blow-up is now gated, per the criterion below.
+- **Passed** `[2026-08-25: gated. Was recorded as passed against a sweep that stopped too
+  early, then corrected to not passed on 2026-08-12; the history is kept below because the
+  failure it found is what the gate is calibrated on]` - the reported bounds are consistent
+  with the observed moment errors, because the residual is now one of the bounds.
   Across water and ozone the reconstructed-moment residual stays in 2.4e-15 to 2e-14 at
   every order, which is the band this criterion was recorded against. **Lithium-hydride
   breaks it**: at `nmom_max = 19` its particle sector conserves 20 of the 20 requested - so
@@ -636,10 +642,28 @@ correlated multiplets, which survives a level crossing.
   has stopped reproducing its moments amplifies roundoff without bound, so the same
   `K = 19` particle reads 7.7e+03 swept to 21, 3.3e+04 to 23 and 3.5e+04 to 19. Only the gap
   reproduces on any sweep, and the gap is the finding.
-  The study now warns above `RESIDUAL_MAX = 1e-8`, six orders above the observed band and
-  twelve below the failure, so nothing legitimate is near it - but a warning in a study is
-  not a gate, and it only fires for someone who runs this one study. **A residual gate
-  belongs in `dyson_diagnostics`, and is the first thing to do next.**
+  **Gated 2026-08-25.** `RESIDUAL_MAX` moves into `momentGW.gw`, the study imports it rather
+  than restating it - a study warning that disagreed with the gate would be worse than no
+  warning - and `converged` now carries a `residual` gate beside `realization`. The failure
+  above would fail it on its own merits rather than needing the hole's unrelated step-down
+  to catch it. `dyson_diagnostics` reports the per-sector residual and the threshold it was
+  judged against, and a blown or unmeasured realization warns by name.
+
+  An unmeasured residual **fails** the gate rather than passing it. With `calculate_errors`
+  off nothing has checked the realization, and that is not the same as having checked it and
+  found it sound - the same argument the study makes for treating `nan` as its own outcome.
+
+  Two things this does not cover, stated so the criterion is not read wider than it is.
+  The gate is on the main solve; `_realize_solvers`, which drives the order-convergence walk
+  and the closure comparison, deliberately runs with the diagnostics off and is not
+  residual-checked - that path has its own gate in `moment_order`. And a residual still
+  cannot diagnose a step-down: it says whether a realization reproduces its input moments,
+  not whether it reached the order asked for, and the two can disagree by eighteen orders of
+  magnitude.
+
+  Verified inert on healthy work rather than assumed: re-running all 13 `nmom_max = 7`
+  baseline cases gives residuals of 1.9e-15 to 1.6e-14 - seven orders below the threshold -
+  and **zero changes to `converged`**. `baseline.check` is 52/52, so nothing was re-recorded.
 - **Passed** - H2O, LiH and the small-gap system have documented order-convergence tables.
 - **Passed** - low-order results remain compatible with the Milestone 0 baseline: 52/52.
 

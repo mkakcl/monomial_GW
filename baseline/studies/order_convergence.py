@@ -72,6 +72,7 @@ from baseline import frontier as frontier_lib
 from baseline import systems as systems_module
 from baseline.run import build_mean_field
 from momentGW.gw import GW
+from momentGW.gw import RESIDUAL_MAX as _RESIDUAL_MAX
 from momentGW.rpa import dRPA
 
 #: Below this quasiparticle weight the pole carrying the reference orbital is a satellite
@@ -120,20 +121,10 @@ DEFAULT_CAP = 23
 DEFAULT_XC = "pbe"
 
 
-#: Above this reconstructed-moment residual the realization does not reproduce the moments
-#: it was given, whatever its conserved order says. Healthy values across these systems are
-#: 2.4e-15 to 2e-14, and lithium-hydride's particle sector reaches ~3e+04 at nmom_max = 19
-#: while conserving 20 of 20 - so the gate beside it passes. Six orders above the observed
-#: band and twelve below that failure: nothing legitimate is near it, which is the point of
-#: putting it so far from both rather than tuning it.
-#:
-#: The magnitude of that failure is not reproducible and should not be quoted as though it
-#: were. The moments are built once at the cap and sliced, and the slicing is equal only to
-#: roundoff - but a realization that has stopped reproducing its moments amplifies roundoff
-#: without bound, so the same K=19 particle reads 7.7e+03 swept to 21, 3.3e+04 to 23 and
-#: 3.5e+04 to 19. What is stable is that it is twelve orders above this threshold and
-#: eighteen above a healthy residual. Quote the gap, not the number.
-RESIDUAL_MAX = 1e-8
+#: The threshold the realization is judged against, imported rather than restated: the
+#: library gates `converged` on it, and a study warning that disagreed with the gate would
+#: be worse than no warning. `momentGW.gw.RESIDUAL_MAX` carries the calibration.
+RESIDUAL_MAX = _RESIDUAL_MAX
 
 
 class ProbeError(Exception):
