@@ -995,7 +995,31 @@ This track runs alongside every milestone rather than at the end.
 - [ ] Add a documented molecular subset beyond minimal bases, including at least one
   GW100-style system.
 - [ ] Converge orbital and auxiliary basis sets separately from algorithmic tolerances.
-- [ ] Quantify compression and frozen-core errors in meV for frontier QP energies.
+- [x] Quantify compression and frozen-core errors in meV for frontier QP energies.
+  **Measured 2026-08-26** (`baseline/studies/approximation_errors.py`), against the same
+  calculation with neither applied. They are not the same kind of approximation and the
+  numbers say so.
+
+  *Compression is free at the tolerance this code uses.* At `compression_tol = 1e-10`, the
+  default, and at 1e-8, the frontier does not move at all - **0.000 meV** on every system and
+  reference measured - while the auxiliary space shrinks, on lithium-hydride from 60 to 34.
+  It becomes visible only at 1e-6 (up to 0.5 meV) and 1e-4 (up to 2.3 meV). A numerical knob
+  behaving like one.
+
+  *A frozen core is not.* Freezing the core costs **0.8 to 511 meV** on the HOMO depending
+  on system and reference - ozone/pbe is the largest, water/pbe 374 meV, lithium-hydride/hf
+  the smallest at 0.8 meV. That is four to five orders above the baseline's own
+  reproducibility floor, so it is a physical approximation with a physical price and belongs
+  with the starting-point uncertainty of the item below rather than with the numerical
+  tolerances of Milestone 3.1's error budget.
+
+  This item also found a bug that made half of it impossible. `build_se_static` applied
+  `self.active` - an *orbital* mask - to *AO-basis* matrices. With nothing frozen and
+  `nao == nmo` that is a no-op, which is why it survived every test and all 52 baseline
+  cases; with a frozen core it silently truncated the AO matrices for a Hartree-Fock
+  reference and raised outright for a DFT one, where `vj` and `vk` were then different
+  shapes. **Frozen-core calculations were unusable from a DFT starting point.** Fixed here
+  and pinned in `tests/test_frozen_core.py`; unfrozen results are unchanged, 52/52.
 - [ ] Compare at least HF and a suitable hybrid starting point for scientifically
   important results; keep starting-point uncertainty separate from numerical error.
 - [ ] Report spectral functions rather than relying only on per-orbital pole assignment

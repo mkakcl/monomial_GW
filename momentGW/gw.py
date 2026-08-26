@@ -414,18 +414,24 @@ class GW(BaseGW):
             non-diagonal elements are set to zero.
         """
 
-        # Get intermediates
-        mask = self.active
+        # Get intermediates. `dm` is built from the coefficients *with* frozen orbitals,
+        # since the frozen electrons still contribute to the potentials below.
         dm = self._scf.make_rdm1(mo_coeff=self._mo_coeff)
+        nmo_active = self.mo_coeff.shape[-1]
 
-        # Get the contribution from the exchange-correlation potential
+        # Get the contribution from the exchange-correlation potential. Everything here is
+        # in the AO basis and is restricted to the active space by the rotation at the end,
+        # not before it: `self.mo_coeff` already carries the active mask. Masking the AO
+        # matrices with it instead - which is what this did - applies an orbital mask to
+        # basis-function indices. That is a no-op when nothing is frozen and `nao == nmo`,
+        # and wrong otherwise: with a frozen core it silently truncated the AO matrices,
+        # and for a DFT reference it left `vj` and `vk` different shapes and raised.
         if getattr(self._scf, "xc", "hf") == "hf":
-            se_static = np.zeros_like(dm)
-            se_static = se_static[..., mask, :][..., :, mask]
+            se_static = np.zeros(dm.shape[:-2] + (nmo_active, nmo_active))
         else:
             with util.SilentSCF(self._scf):
-                veff = self._scf.get_veff(None, dm)[..., mask, :][..., :, mask]
-                vj = self._scf.get_j(None, dm)[..., mask, :][..., :, mask]
+                veff = self._scf.get_veff(None, dm)
+                vj = self._scf.get_j(None, dm)
 
             vhf = integrals.get_veff(dm, j=vj, basis="ao")
             se_static = vhf - veff
