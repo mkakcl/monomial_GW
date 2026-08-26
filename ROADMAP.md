@@ -971,8 +971,27 @@ this roadmap:
 
 This track runs alongside every milestone rather than at the end.
 
-- [ ] Maintain comparisons against PySCF TD-dRPA or an explicit-pole oracle on small
-  systems.
+- [x] Maintain comparisons against PySCF TD-dRPA or an explicit-pole oracle on small
+  systems. **Both, 2026-08-26**, because they answer different questions
+  (`baseline/studies/rpa_oracle.py`, pinned for the suite in `tests/test_rpa_oracle.py`).
+
+  *PySCF TD-dRPA* validates the physics: `pyscf.tdscf.dRPA` is an independent
+  implementation with its own conventions, so agreement means the matrix built here really
+  is the direct RPA problem - spin factor, absence of exchange and particle-hole metric all
+  right. Excitation energies agree to **1.2e-14 to 6.5e-13 eV** across H2, LiH and water at
+  both references. What it cannot check is the moments, which PySCF does not compute.
+
+  *The explicit-pole oracle* validates the recursion. The recursion's step is
+  `eta_n = eta_(n-2) M` with `M = D^2 + 4 V^T V D`, and `M` is similar to `Mtilde` under
+  `D^1/2`, so every moment collapses to a closed form in the excitations,
+  `eta_n = V D^1/2 S Omega^(n-1) S^T D^1/2` - a sum over poles rather than an iteration,
+  sharing no arithmetic with the recursion beyond the integrals. Agreement is **2.5e-16 to
+  1.3e-14** relative over orders 0 to 15, well past what the baseline records. Two checks
+  come free: `n = 1` must collapse to `V D` because `S` is orthogonal, and `n = 0` to the
+  zeroth moment Milestone 2 certified independently.
+
+  The tests catch physics rather than only logic: changing the spin factor from 4 to 2, or
+  dropping the `D^2` term from the recursion, each fail four of them.
 - [ ] Add a documented molecular subset beyond minimal bases, including at least one
   GW100-style system.
 - [ ] Converge orbital and auxiliary basis sets separately from algorithmic tolerances.
