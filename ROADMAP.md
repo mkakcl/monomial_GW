@@ -656,8 +656,35 @@ below.
   carries `is_a_bound: False`, the log line says "indicator, not a bound", the module
   docstring states the gap, and a test asserts the flag - so it cannot quietly be promoted.
 - [ ] Validate frontier IP/EA separately from deep-state largest-overlap labels.
-- [ ] Add a spectral-function comparison against an untruncated small-system oracle
-  where satellites or deep states are reported.
+- [x] Add a spectral-function comparison against an untruncated small-system oracle
+  where satellites or deep states are reported. **Done 2026-08-26**
+  (`baseline/studies/spectral_oracle.py`). The oracle is the exact full-pole `G0W0` of
+  `mkakcl/cayley-gw`: every self-energy pole built explicitly from the RPA eigensystem, the
+  upfolded Hamiltonian diagonalised, nothing truncated at any order. A different code with
+  different conventions, so this is external rather than internal.
+
+  On LiH/STO-3G against 54 exact charged poles, **the frontier and the spectral function
+  converge at very different rates**:
+
+  | `nmom_max` | spectral `int abs(dA)/int A` | dHOMO | worst of the states shown |
+  | --- | --- | --- | --- |
+  | 1 | 1.5e-01 | -50.4 meV | 50.4 meV |
+  | 3 | 2.6e-02 | 0.574 meV | **6.02 meV** |
+  | 5 | 4.0e-03 | -0.000 meV | **1.47 meV** |
+  | 9 | 1.4e-04 | -0.000 meV | 0.001 meV |
+  | 15 | 6.1e-06 | -0.000 meV | 0.000 meV |
+
+  The HOMO is settled at `nmom_max = 5` while the spectral function is still at 4e-3 and a
+  shown state is out by 1.5 meV; the spectral function needs 15 to reach 1e-5. **A settled
+  frontier says nothing about the satellites**, which is what the item above asks to be
+  measured rather than assumed.
+
+  The two codes are made to share their integrals, and that is the point. Left alone
+  `cayley-gw` uses exact four-index integrals while momentGW uses density fitting, and the
+  comparison then measures the RI difference instead of the truncation: it stops falling at
+  6.4e-04 and 0.349 meV however many moments are added. That floor is itself a result worth
+  having - **it is what density fitting costs on this system** - and the study reports
+  either mode.
 
 ### Acceptance gate
 
@@ -1023,7 +1050,14 @@ This track runs alongside every milestone rather than at the end.
 - [ ] Compare at least HF and a suitable hybrid starting point for scientifically
   important results; keep starting-point uncertainty separate from numerical error.
 - [ ] Report spectral functions rather than relying only on per-orbital pole assignment
-  in dense satellite regions.
+  in dense satellite regions. **Evidence in hand, capability not built** (2026-08-26). The
+  measurement this item rests on is done - see Milestone 3.4, where the largest-overlap
+  assignment is settled at `nmom_max = 5` while the spectral function is three orders from
+  converged - so relying on per-orbital assignment alone is now known to be insufficient
+  rather than suspected. What is *not* done is the reporting: neither `momentGW` nor
+  `dyson.Lehmann` can emit a spectral function, and a study computing one is not the code
+  reporting one. `spectral_function` in `baseline/studies/spectral_oracle.py` is the working
+  helper and is the thing to promote.
 
 ## Proposed pull-request sequence
 
