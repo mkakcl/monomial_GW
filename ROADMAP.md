@@ -484,6 +484,16 @@ Three designs for that were tried and rejected; the failures are recorded there.
   failure - it reads 7.69e+03 against a threshold of 1e-8 - but it catches it *after* the
   fact and cannot say which pole is wrong. **A support check on the realized poles is the
   next item**, and it belongs beside the residual gate rather than in this one.
+  **Done 2026-08-26**: `converged` now carries a `support` gate beside `residual`. The
+  moments bound their own support from below - for even `n` the weights are non-negative and
+  even powers cannot cancel, so `sqrt(tr(T_n+2) / tr(T_n)) <= max|e|` - and that bound is
+  computed from the input alone, so a realized pole far above it is provably not a pole of
+  the measure. `SUPPORT_MAX = 16` is the geometric midpoint of the worst sound reading across
+  the recorded baseline (3.86, water/pbe at `nmom_max = 3`) and the known failure (65 to 70),
+  about 4x from each. The check abstains below `nmom_max = 2`, where no even pair exists and
+  the bound does not exist either; that is marked `None` rather than voting, and is a
+  different case from the residual gate's unmeasured reading, where a check was declined
+  rather than being unavailable.
 
   Two things not to over-read. The pencil's 2.13e-08 is uniform but is itself six orders
   above the 1e-15 band a healthy recursion achieves, so this is not "the pencil solves it";
