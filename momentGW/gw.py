@@ -73,6 +73,71 @@ def achieved_iteration(solver):
 RESIDUAL_MAX = 1e-8
 
 
+#: Above this ratio of the largest realized pole to the largest lower bound the input
+#: moments place on their own support, a pole is not a pole of the measure that was handed
+#: over.
+#:
+#: Calibrated against both ends rather than chosen. Every sound reading across all 60
+#: applicable sector-readings of the recorded baseline - five systems, both references,
+#: `nmom_max` 3 to 7 - lies at or below **3.86** (water/pbe at `nmom_max = 3`), and the one
+#: known failure lies at **65 to 70**. The threshold is the geometric midpoint of those, so
+#: it sits about 4x from each. Beware the obvious narrower calibration: measured only on
+#: cc-pVDZ at orders 7 and above the worst sound reading is 1.73, and a threshold set from
+#: that would sit far closer to real data than it looks.
+#:
+#: The bound is loosest exactly where the failure does not occur. With four moments only one
+#: even pair is available and the bound underestimates the edge, giving the ~3.9 readings at
+#: `nmom_max = 3`; by order 19 it is within a few percent and every sound reading is under
+#: 1.3. The spurious pole this exists to catch appears at high order, where the check is
+#: tight.
+#:
+#: A miss is not unguarded: the residual gate catches the same failure, at 7.7e+03 against
+#: 1e-8. That backstop is why this is placed to avoid false positives rather than split the
+#: difference - a wrongly failed calculation is disruptive, a missed one is caught anyway,
+#: one step later and without naming the pole.
+#:
+#: Unlike the residual this ratio reproduces. A realization that has stopped reproducing its
+#: moments amplifies roundoff without bound, so the residual of one failure reads anywhere
+#: from 7.7e+03 to 3.5e+04 depending only on the sweep that found it; the same failure's
+#: support ratio reads 65 to 70. The bound is a property of the input, not of the
+#: realization, which is what makes it steady.
+SUPPORT_MAX = 16.0
+
+
+def moment_support_bound(se_moments):
+    r"""Bound the support of a matrix-valued moment sequence from below.
+
+    For :math:`T_n = \sum_k v_k e_k^n v_k^\dagger` the traces
+    :math:`\mu_n = \mathrm{tr}(T_n) = \sum_k w_k e_k^n` carry non-negative weights
+    :math:`w_k = |v_k|^2`. For even :math:`n` every :math:`e_k^n` is non-negative, so
+
+    .. math:: \mu_{n+2} = \sum_k w_k e_k^n e_k^2 \le \max_k e_k^2 \; \mu_n,
+
+    and :math:`\sqrt{\mu_{n+2} / \mu_n}` is a lower bound on :math:`\max_k |e_k|`. The
+    largest such bound available is returned, since they increase with the order.
+
+    This is a property of the moments alone. A realization cannot move it, which is what
+    makes it usable as a check *on* a realization.
+
+    Parameters
+    ----------
+    se_moments : numpy.ndarray
+        Moments of one sector, indexed by order.
+
+    Returns
+    -------
+    bound : float
+        Largest lower bound on the spectral radius, or `0.0` if no pair of even orders
+        carries positive weight.
+    """
+    traces = np.array([float(np.trace(np.atleast_2d(moment))) for moment in se_moments])
+    bound = 0.0
+    for order in range(0, traces.size - 2, 2):
+        if traces[order] > 0.0 and traces[order + 2] > 0.0:
+            bound = max(bound, float(np.sqrt(traces[order + 2] / traces[order])))
+    return bound
+
+
 #: Weight below which a multiplet is a satellite rather than a quasiparticle. A
 #: moment-truncated spectrum carries a forest of low-weight poles between the HOMO and the
 #: true LUMO, and a permissive threshold picks one of them as the frontier.
@@ -139,6 +204,8 @@ def realization_record(solver, se_moments):
         Realization diagnostics for one sector.
     """
     achieved = achieved_iteration(solver)
+    support_bound = moment_support_bound(se_moments)
+    poles = solver.result.get_self_energy().energies
 
     return {
         "moments_supplied": int(np.asarray(se_moments).shape[0]),
@@ -151,6 +218,23 @@ def realization_record(solver, se_moments):
         # eigenvalues would force the solver's result to diagonalise its supermatrix.
         "n_poles": int(solver.result.neig),
         "errors": solver.moment_errors() if solver.calculate_errors else None,
+        # The largest realized pole against the largest lower bound the input moments place
+        # on their own support. `realization` and the residual both read the realization
+        # against the order it claims; this reads it against the data it was given, and is
+        # the only one of the three that names *which* pole is wrong.
+        "support_bound": support_bound,
+        "support_max": float(np.abs(np.asarray(poles)).max()) if np.size(poles) else 0.0,
+        # `None` where the check does not apply rather than a number that would vote. The
+        # bound needs two even orders, so it needs at least three moments: below
+        # `nmom_max = 2` there is nothing to bound the support with, and that is a property
+        # of the request rather than a failure of the realization. This is *not* the
+        # unmeasured case the residual gate fails on - there the check was declined, here
+        # it does not exist.
+        "support_ratio": (
+            float(np.abs(np.asarray(poles)).max() / support_bound)
+            if support_bound > 0.0 and np.size(poles)
+            else None
+        ),
     }
 
 
@@ -1060,6 +1144,14 @@ class GW(BaseGW):
                     f"{record['nmom_conserved_achieved']} of "
                     f"{record['nmom_conserved_requested']} moments"
                 )
+            ratio = record["support_ratio"]
+            if ratio is not None and ratio > SUPPORT_MAX:
+                logging.warn(
+                    f"[red]Realized a pole outside the support of its own moments[/] "
+                    f"({sector}): largest pole {record['support_max']:.3e} is "
+                    f"{ratio:.1f}x the bound {record['support_bound']:.3e} "
+                    f"the moments place on themselves"
+                )
             errors = record["errors"]
             if errors is None:
                 logging.warn(
@@ -1192,6 +1284,14 @@ class GW(BaseGW):
             "residual": all(
                 value is not None and value <= RESIDUAL_MAX for value in residual.values()
             ),
+            # Checked against the input rather than against the realization's own claims,
+            # so it catches a spurious pole before any moment is reconstructed and says
+            # which sector carries it. The residual gate catches the same failure only
+            # afterwards, through the damage that pole does to the high moments.
+            "support": all(
+                r["support_ratio"] is None or r["support_ratio"] <= SUPPORT_MAX
+                for r in realization.values()
+            ),
             "nelec": bool(abs(error) <= nelec_tol),
         }
         if order_record is not None:
@@ -1202,6 +1302,13 @@ class GW(BaseGW):
             "realization": realization,
             "residual": residual,
             "residual_max": float(RESIDUAL_MAX),
+            "support_ratio": {
+                sector: (
+                    None if record["support_ratio"] is None else float(record["support_ratio"])
+                )
+                for sector, record in realization.items()
+            },
+            "support_max_ratio": float(SUPPORT_MAX),
             "moment_error": {"hole": moment_error[0], "particle": moment_error[1]},
             "nelec_error": float(error),
             "nelec_tol": float(nelec_tol),
