@@ -358,7 +358,37 @@ Three designs for that were tried and rejected; the failures are recorded there.
   moves by 30-300x the scalar error in eV. `error_budget` uses the upper end, so the eta0
   entry is a bound rather than an estimate.
 - [ ] Select the eta0 tolerance and pole count from the requested final moment/QP
-  tolerance.
+  tolerance. **Still open, and now demonstrated rather than argued** (2026-08-28,
+  `baseline/studies/integration_convergence.py`). Sweeping both eta0 routes in their own
+  knobs across the 30 systems of a def2-TZVPP GW100 campaign, at Hartree-Fock:
+
+  - The two routes **converge to each other**, to under 1 meV on 25 of 30, so the integral
+    itself is not in dispute. The default-to-default differences are resolution.
+  - Clenshaw-Curtis at its default 48 points is off by more than 1 meV on **14 of 30**,
+    worst 152 meV, and systematically low - a 13 to 50 meV deficit on many systems.
+  - HHT at its automatic pole count is off by more than 1 meV on **7 of 30** and is closer
+    on 27 of 30, usually within 0.1 meV.
+  - **The failure that belongs to this item**: on copper-cyanide the automatic count of 28
+    poles gives a frontier 173.7 meV from its own 48-pole limit, while the eta0 certificate
+    reads a scalar error of **8.98e-15**, comfortably inside the `1e-14` tolerance. The
+    certified quantity is the scalar rational-approximation error over the certified
+    interval, and **that does not bound the quasiparticle error**. potassium-hydride is the
+    same failure at -98.9 meV. Choosing the pole count from a requested QP tolerance is what
+    would close this; a tighter scalar tolerance would not, because the scalar error was
+    already met.
+
+  Two things the same sweep showed that are not about eta0, recorded so the table is not
+  over-read: **12 of the 30 fail the `realization` gate at default settings**, six on both
+  routes, so those systems step down however eta0 was computed; and the five systems whose
+  converged limits still differ by more than 1 meV - lithium-fluoride 62.7, potassium-bromide
+  30.2 - all fail `realization` too. Where the routes genuinely fail to meet it is the
+  realization, not the integral.
+
+  The sweep is Hartree-Fock only, deliberately: `xc="hf"` resolves the auxiliary basis to
+  `def2-tzvpp-jkfit` on every pyscf since 2.10, while a pure functional resolves to the
+  Coulomb-only `def2-universal-jfit` - 182 auxiliaries against 528 on these systems. **The
+  PBE half is untested by this**, and that auxiliary-basis difference is where the largest
+  reported discrepancies sat.
 - [x] Report errors per sector and order; do not reduce all information to one scalar.
   The realization entry carries the per-order residuals and the conserved order for each
   sector, and the report deliberately has no total: the contributions are in different
