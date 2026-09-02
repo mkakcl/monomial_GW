@@ -436,5 +436,79 @@ class Test_Edges(unittest.TestCase):
         UGW(mf)  # the default still constructs
 
 
+class Test_ToleranceFromTarget(unittest.TestCase):
+    """Milestone 3.1: the tolerance and pole count follow from the accuracy requested."""
+
+    @classmethod
+    def setUpClass(cls):
+        mol = gto.M(atom="Li 0 0 0; H 0 0 1.595", basis="sto-3g", verbose=0)
+        cls.mf = scf.RHF(mol).density_fit(auxbasis="weigend")
+        cls.mf.conv_tol = 1e-11
+        cls.mf.kernel()
+
+    def test_moment_route_inverts_a_measured_bound(self):
+        """The moment factor is 1.0, so the tolerance is the request."""
+        tol, clamped = eta0.eta0_tol_for_moment_tol(1e-6)
+        self.assertAlmostEqual(tol, 1e-6 / eta0.MOMENT_AMPLIFICATION)
+        self.assertFalse(clamped)
+
+    def test_frontier_route_costs_the_amplification(self):
+        """The frontier factor is large, so the same request buys a far tighter tolerance."""
+        moment_tol, _ = eta0.eta0_tol_for_moment_tol(1e-6)
+        qp_tol, _ = eta0.eta0_tol_for_qp_tol(1e-6)
+        self.assertLess(qp_tol, moment_tol)
+        self.assertAlmostEqual(qp_tol, 1e-6 / eta0.ETA0_FRONTIER_AMPLIFICATION)
+
+    def test_frontier_factor_exceeds_the_moment_factor(self):
+        """The two routes are not interchangeable, and the constants record why."""
+        self.assertGreater(eta0.ETA0_FRONTIER_AMPLIFICATION, 1000.0)
+        self.assertLessEqual(eta0.MOMENT_AMPLIFICATION, 1.0)
+
+    def test_unreachable_target_is_clamped_not_silently_missed(self):
+        for derive in (eta0.eta0_tol_for_moment_tol, eta0.eta0_tol_for_qp_tol):
+            tol, clamped = derive(1e-30)
+            self.assertEqual(tol, eta0.ETA0_TOL_FLOOR)
+            self.assertTrue(clamped, msg=derive.__name__)
+
+    def test_non_positive_target_is_rejected(self):
+        for derive in (eta0.eta0_tol_for_moment_tol, eta0.eta0_tol_for_qp_tol):
+            for bad in (0.0, -1e-6):
+                with self.assertRaises(ValueError, msg=f"{derive.__name__}({bad})"):
+                    derive(bad)
+
+    def test_request_selects_the_pole_count(self):
+        """A looser request buys fewer poles: the point of the item."""
+        counts = []
+        for moment_tol in (1e-3, 1e-9):
+            gw = GW(self.mf, polarizability="drpa", moment_tol=moment_tol)
+            gw.verbose = 0
+            gw.kernel(nmom_max=1)
+            counts.append(gw.eta0_diagnostics["n_poles"])
+            self.assertEqual(gw.eta0_diagnostics["tol_source"], "moment_tol")
+        self.assertLess(counts[0], counts[1])
+
+    def test_achieved_error_is_under_the_moment_request(self):
+        """The guarantee moment_tol makes, on the system it makes it about."""
+        gw = GW(self.mf, polarizability="drpa", moment_tol=1e-6)
+        gw.verbose = 0
+        gw.kernel(nmom_max=1)
+        self.assertLessEqual(gw.eta0_diagnostics["scalar_error"], 1e-6)
+
+    def test_two_targets_at_once_is_an_error(self):
+        """They derive the same tolerance, so one would be silently ignored."""
+        gw = GW(self.mf, polarizability="drpa", moment_tol=1e-6, qp_tol=1e-6)
+        gw.verbose = 0
+        with self.assertRaises(ValueError):
+            gw.kernel(nmom_max=1)
+
+    def test_default_records_that_no_target_was_given(self):
+        gw = GW(self.mf, polarizability="drpa")
+        gw.verbose = 0
+        gw.kernel(nmom_max=1)
+        self.assertEqual(gw.eta0_diagnostics["tol_source"], "eta0_tol")
+        self.assertIsNone(gw.eta0_diagnostics["moment_tol"])
+        self.assertIsNone(gw.eta0_diagnostics["qp_tol"])
+
+
 if __name__ == "__main__":
     unittest.main()

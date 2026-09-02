@@ -333,11 +333,19 @@ formed; no particle-hole squared matrix is allowed.
 
 ## Milestone 3 - Higher-order moment stability and propagated errors
 
-**Status: In progress - the acceptance gate passes on all five criteria as of 2026-08-25,
-and 12 of 17 work items are done. What remains is 3.1's tolerance derivation, 3.2's
-attribution and port, 3.4's two validation items, and one known limitation under 3.3 that
-has no checkbox: past a step-down `moment_order` can read true beside `realization` false.
-Three designs for that were tried and rejected; the failures are recorded there.**
+**Status: Complete - all 17 work items are done as of 2026-09-02, and the acceptance gate
+passes on all five criteria. The last five closed together: 3.1's tolerance derivation is
+built as `moment_tol`/`qp_tol`, 3.4's frontier-versus-deep-state validation is measured,
+3.2's two remaining items closed negative on evidence already recorded there, and 3.3's
+known limitation is fixed by a fourth design after three were rejected.**
+
+Two corrections landed with them and both change numbers quoted elsewhere. Milestone 2.4's
+30-300x eta0 amplification **was not a bound**: re-measured above the float64 floor it
+reaches 1008x, and `ETA0_FRONTIER_AMPLIFICATION` is now 1200 rather than 300, so
+`error_budget`'s eta0 row was understating the frontier term by 3.4x. And a largest-overlap
+label is not interchangeable with the frontier readout on a deep or degenerate state, which
+bounds what `studies/spectral_oracle.py`'s correspondence can be read to say. Details under
+3.1 and 3.4.
 
 ### 3.1 End-to-end error budget
 
@@ -357,8 +365,37 @@ Three designs for that were tried and rejected; the failures are recorded there.
   2.4 and recorded there: the dd-moment recurrence does not amplify it, and the frontier
   moves by 30-300x the scalar error in eV. `error_budget` uses the upper end, so the eta0
   entry is a bound rather than an estimate.
-- [ ] Select the eta0 tolerance and pole count from the requested final moment/QP
-  tolerance.
+- [x] Select the eta0 tolerance and pole count from the requested final moment/QP
+  tolerance. **Done 2026-09-02**: `moment_tol` and `qp_tol` state the accuracy wanted and
+  derive `eta0_tol` from it; the pole count already follows from the tolerance through
+  `eta0.select_poles`, so fixing one fixes the other. Setting both raises, since they
+  derive the same number from different targets. Both default to `None` and the baseline is
+  unchanged at 52/52.
+  **The two routes are not on the same footing, and the difference is the whole finding**
+  (`baseline/studies/eta0_target.py`). The moment route inverts a factor the recurrence is
+  *measured not to exceed*: above the float64 floor the largest moment/eta0 ratio over
+  water/HF, LiH/HF and ozone/PBE is **0.97**, so `MOMENT_AMPLIFICATION = 1.0` is a bound
+  with room. The frontier route inverts an **observed maximum of a non-monotonic response**,
+  which is a weaker thing, and it needs a constant 1200x larger.
+  **2.4's 30-300x was being used as a bound and is not one.** Re-measuring the same three
+  systems above the float64 floor gives 350x (water), 582x (ozone) and **1008x** (LiH) - the
+  300x `error_budget` was converting with understated the frontier term by 3.4x. Two causes,
+  neither of them the arithmetic: the ratio was read off rows below the ~1e-13 floor 2.4
+  itself documents, where a floor-limited difference over a vanishing perturbation inflates
+  it without bound; and the frontier was read with `_gf_to_mo_energy`, the largest-overlap
+  assignment 3.4 above shows can switch poles discontinuously. `ETA0_FRONTIER_AMPLIFICATION`
+  is now **1200**, above the largest value seen anywhere (1076x, LiH at a 1e-2 request), and
+  is documented as an observed maximum rather than a bound.
+  **What that correction did to the frontier route.** At 300x a requested frontier accuracy
+  was missed in **6 of 18** cases across all three systems, worst by 29x. At 1200x it is met
+  in **18 of 18**. So the route works, but its justification is empirical: the response is
+  not monotonic in the request - LiH moves further at a 1e-3 request than at 1e-2 - so
+  nothing here proves the next system stays under it. `qp_tol` therefore also checks itself
+  after the fact: `eta0_diagnostics["frontier_bound_ev"]` carries the *achieved* error
+  through the same constant and `dRPA` warns when that exceeds what was asked for.
+  Cost is the other asymmetry. On water at `nmom_max = 7`, 1 meV asked of the moments buys 5
+  poles and asked of the frontier buys 8; the default `eta0_tol = 1e-14` buys 18 where 11
+  already give a bit-identical frontier.
 - [x] Report errors per sector and order; do not reduce all information to one scalar.
   The realization entry carries the per-order residuals and the conserved order for each
   sector, and the report deliberately has no total: the contributions are in different
@@ -384,8 +421,15 @@ Three designs for that were tried and rejected; the failures are recorded there.
   which is the cancellation. The conditioning gain this was premised on -- 13.7x to 2.3e6x
   on `cond(H0)`, `HANKEL_PENCIL.md` section 3 -- is real but applies to a Gram matrix only
   a one-shot route forms, not to this one.
-- [ ] Evaluate a direct Chebyshev/modified-moment plus block-Jacobi backend for orders
-  where raw monomial Hankel matrices lose usable precision. **Unparked 2026-08-12: the
+- [x] Evaluate a direct Chebyshev/modified-moment plus block-Jacobi backend for orders
+  where raw monomial Hankel matrices lose usable precision. **Evaluated and not built**;
+  the evaluation is the body of this item and it closes negative. The trigger fired, the
+  attribution was done, and it ruled out the thing the backend would fix: a different
+  algorithm on the *same raw monomial moments* reproduces them eleven orders better, so the
+  moments carry the information and the basis is not what loses it. The cause is a single
+  spurious pole at 301 Ha, and the remedy for that is the support gate, which is built.
+  Closed on the evidence already recorded below rather than left open as a standing
+  intention - the condition for building it is written there and is not met. **Unparked 2026-08-12: the
   premise that kept this item shelved has been falsified - see the end of this item. What
   follows first is the superseded reasoning, kept because the way it failed is the useful
   part.**
@@ -505,7 +549,12 @@ Three designs for that were tried and rejected; the failures are recorded there.
   Build this only if a route is found where the raw monomial moments themselves are the
   loss, which this is not: the source-agnostic `realization/` package in `mkakcl/chebyshev-gw`
   remains the thing to reuse, behind an option with monomial remaining the default.
-- [ ] Keep the raw monomial backend as an oracle at low order during migration.
+- [x] Keep the raw monomial backend as an oracle at low order during migration. **Moot,
+  2026-09-02**: there is no migration to guard, since the item above closed negative.
+  Monomial is not "the default during a migration", it is the only backend and stays so.
+  The oracle role this asked for is filled anyway and better - by the explicit-pole check
+  in `studies/rpa_oracle.py` and the exact `G0W0` of `studies/spectral_oracle.py`, both of
+  which are independent of the moment basis rather than a second configuration of it.
 
 ### 3.3 Adaptive moment order
 
@@ -573,6 +622,30 @@ below.
   sector that stepped down from one that never had further to go. Whichever design is chosen
   needs the per-sector figure carried in the readout; it is not added here because nothing
   in the library would read it yet.
+  **Fixed 2026-09-02, by a fourth design the three failures pointed at.** The prerequisite
+  is done: `_frontier_from_solvers` now carries `nmom_conserved_per_sector` and
+  `nmom_conserved_requested` beside the minimum, and the walk records both per order.
+  What the three rejected designs have in common is that each tried to make `moment_order`
+  encode *shortfall* - whether everything asked for was delivered - which `realization`
+  already says. The question it should answer instead is **why the walk stopped**: did the
+  frontier settle, or did the realization freeze underneath it? Those differ observably.
+  Past a step-down every higher order realizes the identical thing, so the discriminator is
+  whether the qualifying orders' per-sector conserved counts are the same, and that is a
+  statement about the walk that `realization` does not make.
+  `settled_vacuously` is reported beside `moment_order`, never folded into it, and it fires
+  exactly where it should. On lithium-hydride/STO-3G at `nmom_max = 19` and a tolerance of
+  1e-16 both sectors pin at (6, 14) and the last three orders realize the same thing: the
+  walk calls order 17 converged on a shift that is zero because nothing moved, and the flag
+  says so. On H2/6-31g from Hartree-Fock - the case that killed design (i) - the particle
+  pins at 6 while the hole gains to 22, so something *is* changing, the settling is real,
+  and the flag correctly stays false. Design (i) discarded that run; this does not.
+  It cannot flip the verdict on its own, which is the property that keeps it honest: a
+  frozen realization is one that fell short, so `realization` is already false wherever this
+  fires. It adds the reason, not a second veto. Three tests pin both directions and that
+  property.
+  What is *not* claimed: this reports why the walk stopped, it does not make a vacuously
+  converged answer usable, and it does not let the walk continue past a step-down - nothing
+  above the order the moments were built at is knowable from them.
   **Two consecutive orders must qualify, not one.** The shift is not monotonic in the
   order - on water/cc-pVDZ it runs 0.464, 0.382, 0.070, 0.096, 0.016, 0.042 eV - and a
   single-shift rule stops at order 11 for a 1e-3 Ha tolerance, immediately after which the
@@ -655,7 +728,46 @@ below.
   an upfolded eigenproblem is not one, and no theorem here covers that step. The record
   carries `is_a_bound: False`, the log line says "indicator, not a bound", the module
   docstring states the gap, and a test asserts the flag - so it cannot quietly be promoted.
-- [ ] Validate frontier IP/EA separately from deep-state largest-overlap labels.
+- [x] Validate frontier IP/EA separately from deep-state largest-overlap labels.
+  **Done 2026-09-02** (`baseline/studies/frontier_labels.py`), against the same exact
+  full-pole oracle, with integrals shared. The two rules this code uses answer different
+  questions: `frontier_readout` gates on a pole's *total* physical weight and then takes
+  Aufbau order, while a largest-overlap label asks which pole carries a given orbital. A
+  pole can be physical overall and carry nothing on one orbital, which is how a
+  magnesium-oxide comparison once reported 535.9 meV that was 8.9 meV once both sides used
+  one rule.
+  **The two rules do not in fact disagree here.** On water, lithium-hydride and neon they
+  return the same frontier pole to 0.000 meV at every order, on both sides. So the
+  magnesium-oxide failure is not generic to the rules; it needs a spectrum where the
+  frontier pole carries no weight on the frontier orbital, and none of these has one. That
+  is worth knowing in the other direction too: the headline IP/EA and the frontier label
+  are the same number on ordinary systems, and a study that validates one validates the
+  other *there*.
+  **The deep-state labels are a different matter, and they are not validated by the
+  frontier.** Two separate effects, and the second is not an error at all:
+  - *Deep states converge more slowly.* Water's oxygen 1s at -559 eV is out by 42.7 meV at
+    `nmom_max = 11` while the frontier is at 5.7 meV and the valence states at 2-6 meV.
+    Same spectrum, same order, an order of magnitude apart.
+  - *Some labels are not comparable at all.* Water's MO 1 reads 356.9 meV and does not
+    fall with order (539.7, 254.9, 356.9 across 3, 7, 11). It is not a truncation error:
+    the two spectra distribute that state's weight differently, momentGW's assigned pole
+    carrying 0.907 against the oracle's 0.702.
+  **The diagnostic is the weight disagreement, not the weight.** `|dw|` between the two
+  sides separates the two cases exactly: every orbital with `|dw| < 0.01` agrees to 42.7 meV
+  or better, and every orbital above it is one of the two anomalies. A low weight on its own
+  does not do this - neon's 1s carries 0.889 on both sides and agrees to 0.000 meV.
+  Critically **`|dw|` does not fall with order** (water 0.235, 0.220, 0.205; neon 0.365,
+  0.399, 0.385), which is what distinguishes a labelling artefact from a converging error.
+  **Degeneracy is the clean case where the label has no answer.** Neon's 2p frontier is a
+  3-fold multiplet the SCF fixes only as a subspace, and the two spectra pick different
+  combinations within it: all three partners read exactly -6.342 meV, frozen from
+  `nmom_max = 7` onward, with oracle weights 0.718, 0.777, 0.564 against momentGW's 0.925,
+  0.940, 0.948. A degenerate frontier cannot be scored by largest overlap at all, and the
+  frozen value is the tell - a truncation error would move.
+  So: the frontier IP/EA is validated, deep-state labels are validated only where `|dw|` is
+  small, and on a degenerate multiplet neither largest overlap nor any energy comparison
+  built on it means anything. `studies/spectral_oracle.py` uses largest overlap as a
+  correspondence between two spectra, and this bounds when that correspondence holds.
 - [x] Add a spectral-function comparison against an untruncated small-system oracle
   where satellites or deep states are reported. **Done 2026-08-26**
   (`baseline/studies/spectral_oracle.py`). The oracle is the exact full-pole `G0W0` of

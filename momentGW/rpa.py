@@ -256,7 +256,33 @@ class dRPA(dTDA):
         # requested tolerance.  A fixed pole count is an instruction, so a
         # tolerance miss there is reported, not raised.
         lmin, lmax = eta0.certified_interval(d_full, coupling_bound)
-        tol = self.gw.eta0_tol
+        # Milestone 3.1: where a frontier accuracy is requested, the tolerance is derived
+        # from it rather than given, and the pole count then follows from the tolerance.
+        moment_tol = getattr(self.gw, "moment_tol", None)
+        qp_tol = getattr(self.gw, "qp_tol", None)
+        if moment_tol is not None and qp_tol is not None:
+            raise ValueError(
+                "moment_tol and qp_tol both set; they derive the same eta0 tolerance "
+                "from different targets, so one of them would be silently ignored"
+            )
+        if qp_tol is not None:
+            tol, clamped = eta0.eta0_tol_for_qp_tol(qp_tol)
+            if clamped:
+                logging.warn(
+                    f"Requested qp_tol = {qp_tol:.3e} eV implies an eta0 tolerance below "
+                    f"[bad]{eta0.ETA0_TOL_FLOOR:.3e}[/]; clamped, so the frontier is not "
+                    f"bounded at the requested accuracy"
+                )
+        elif moment_tol is not None:
+            tol, clamped = eta0.eta0_tol_for_moment_tol(moment_tol)
+            if clamped:
+                logging.warn(
+                    f"Requested moment_tol = {moment_tol:.3e} implies an eta0 tolerance "
+                    f"below [bad]{eta0.ETA0_TOL_FLOOR:.3e}[/]; clamped, so the moments are "
+                    f"not bounded at the requested accuracy"
+                )
+        else:
+            tol = self.gw.eta0_tol
         n_poles_fixed = self.gw.eta0_n_poles
         shifts, weights, delta, n_estimate = eta0.select_poles(
             lmin, lmax, tol, n_poles=n_poles_fixed
@@ -314,6 +340,18 @@ class dRPA(dTDA):
             "npoints_legacy": int(self.gw.npoints),
             "scalar_error": float(delta),
             "tol": float(tol),
+            # Which route set the tolerance. Without this a result cannot say whether
+            # `tol` was asked for directly or derived from a frontier target.
+            "tol_source": (
+                "qp_tol"
+                if qp_tol is not None
+                else "moment_tol"
+                if moment_tol is not None
+                else "eta0_tol"
+            ),
+            "moment_tol": float(moment_tol) if moment_tol is not None else None,
+            "qp_tol": float(qp_tol) if qp_tol is not None else None,
+            "frontier_bound_ev": float(delta) * eta0.ETA0_FRONTIER_AMPLIFICATION,
             "cholesky_residuals": {
                 "max": float(np.max(residuals)),
                 "per_pole": [float(r) for r in residuals],
@@ -329,6 +367,14 @@ class dRPA(dTDA):
                 ("integral", integral.shape),
             ],
         }
+        # The frontier constant is an observed maximum, not a bound, so what was asked
+        # for is checked against what was achieved rather than assumed from the request.
+        if qp_tol is not None and diagnostics["frontier_bound_ev"] > qp_tol:
+            logging.warn(
+                f"Achieved eta0 error implies a frontier bound of "
+                f"[bad]{diagnostics['frontier_bound_ev']:.3e}[/] eV against the requested "
+                f"{qp_tol:.3e} eV"
+            )
         self.gw.eta0_diagnostics = diagnostics
         eta0.report(diagnostics)
 
