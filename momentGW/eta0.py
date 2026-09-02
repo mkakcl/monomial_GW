@@ -319,6 +319,113 @@ def certified_interval(d, coupling_bound):
     return lmin, lmax
 
 
+#: How far an eta0 relative error travels to the frontier, in eV per unit relative error.
+#: **An observed maximum, not a proven bound.** Milestone 2.4 recorded 30-300x and the
+#: budget used 300; re-measuring above the float64 floor (`delta > 1e-12`) over the same
+#: three systems gives 350x on water/HF, 582x on ozone/PBE and 1008x on LiH/HF, so 300
+#: understated it by 3.4x. This is the measured maximum rounded up. The frontier response
+#: is not smooth in the perturbation - see `studies/eta0_target.py`, where it is
+#: non-monotonic and reaches 8630x at loose tolerances - so nothing here should be read as
+#: a guarantee. Set above the largest value observed (1076x, LiH/HF at a 1e-2 request in
+#: `studies/eta0_target.py`) rather than at it, because the response is not monotonic in
+#: the request and a constant sitting exactly on the observed maximum has no margin.
+ETA0_FRONTIER_AMPLIFICATION = 1200.0
+
+#: How far an eta0 relative error travels to the dd moments, per unit relative error.
+#: Milestone 2.4's finding that the recurrence does not amplify, made quantitative: above
+#: the float64 floor the largest ratio over water/HF, LiH/HF and ozone/PBE is 0.97, so 1.0
+#: is a bound with a little room. Unlike the frontier figure this one is well behaved,
+#: which is why a requested *moment* tolerance can be inverted and a requested frontier
+#: accuracy cannot.
+MOMENT_AMPLIFICATION = 1.0
+
+#: Floor on a derived eta0 tolerance. Below this the rational approximation is asking for
+#: an accuracy the double-precision arithmetic underneath it cannot deliver, so a target
+#: that implies one is clamped and said out loud rather than silently missed.
+ETA0_TOL_FLOOR = 1e-15
+
+
+def eta0_tol_for_moment_tol(moment_tol):
+    """Turn a requested dd-moment accuracy into the eta0 tolerance that delivers it.
+
+    Milestone 3.1 asks for the eta0 tolerance and pole count to be selected from the
+    accuracy actually wanted rather than set by hand. Only the tolerance needs deriving:
+    the pole count is already chosen against it by `select_poles`, so fixing one fixes the
+    other.
+
+    The conversion is `MOMENT_AMPLIFICATION` inverted. The recurrence carries an eta0
+    perturbation to the moments at a factor of at most 0.97 as measured, so this inversion
+    is sound in a way the frontier one is not: see `eta0_tol_for_qp_tol`, which needs a
+    constant 1200x larger and an empirical rather than a derived justification.
+
+    Parameters
+    ----------
+    moment_tol : float
+        Requested relative accuracy of the dd moments. Must be positive.
+
+    Returns
+    -------
+    eta0_tol : float
+        Scalar relative tolerance for the rational approximation.
+    clamped : bool
+        Whether the floor was hit, meaning the requested accuracy is not deliverable
+        through this term and the caller was given the tightest tolerance available
+        instead.
+
+    Raises
+    ------
+    ValueError
+        If `moment_tol` is not positive. A non-positive accuracy has no tolerance.
+    """
+    if not moment_tol > 0.0:
+        raise ValueError(f"moment_tol must be positive, got {moment_tol!r}")
+    derived = moment_tol / MOMENT_AMPLIFICATION
+    if derived < ETA0_TOL_FLOOR:
+        return ETA0_TOL_FLOOR, True
+    return derived, False
+
+
+def eta0_tol_for_qp_tol(qp_tol):
+    """Turn a requested frontier accuracy in eV into an eta0 tolerance.
+
+    The frontier counterpart of `eta0_tol_for_moment_tol`, and a weaker thing. The moment
+    conversion inverts a factor the recurrence is *measured not to exceed*; this one
+    inverts an observed maximum over three systems, of a response that is not monotonic in
+    the request. It delivered the requested accuracy in all 18 cases swept in
+    `studies/eta0_target.py`, and that is the whole of its justification.
+
+    Two consequences, both of which the caller is entitled to know about. It is expensive:
+    the constant is 1200x, so a requested frontier accuracy buys a far tighter eta0
+    tolerance and several more poles than the same number requested of the moments. And it
+    is checkable after the fact but not before - `eta0_diagnostics["frontier_bound_ev"]`
+    reports the achieved scalar error carried through the same constant, and `dRPA` warns
+    when that exceeds what was asked for.
+
+    Parameters
+    ----------
+    qp_tol : float
+        Requested frontier accuracy in eV. Must be positive.
+
+    Returns
+    -------
+    eta0_tol : float
+        Scalar relative tolerance for the rational approximation.
+    clamped : bool
+        Whether the floor was hit.
+
+    Raises
+    ------
+    ValueError
+        If `qp_tol` is not positive.
+    """
+    if not qp_tol > 0.0:
+        raise ValueError(f"qp_tol must be positive, got {qp_tol!r}")
+    derived = qp_tol / ETA0_FRONTIER_AMPLIFICATION
+    if derived < ETA0_TOL_FLOOR:
+        return ETA0_TOL_FLOOR, True
+    return derived, False
+
+
 def estimate_n_poles(lmin, lmax, tol):
     """Estimate the pole count needed for a scalar tolerance.
 

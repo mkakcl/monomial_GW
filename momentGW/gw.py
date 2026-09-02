@@ -5,6 +5,7 @@ from dyson import MBLSE, Lehmann, Spectral
 from dyson import util as dyson_util
 
 from momentGW import energy, logging, thc, util
+from momentGW import eta0 as eta0_mod
 from momentGW.base import BaseGW
 from momentGW.closure import gauss_radau_jacobi
 from momentGW.fock import FockLoop, search_chempot
@@ -351,6 +352,27 @@ class GW(BaseGW):
     eta0_n_poles : int, optional
         Fixed pole count for `eta0_method="hht"`, overriding selection
         against `eta0_tol`. Default value is `None`.
+    moment_tol : float, optional
+        Requested relative accuracy of the dd moments. When set,
+        `eta0_tol` is derived from it and the pole count follows from
+        that tolerance, so the accuracy wanted is stated rather than the
+        knob that delivers it. The conversion is sound because the
+        recurrence does not amplify an eta0 perturbation (measured at
+        most 0.97x). See `qp_tol` for the frontier equivalent, which
+        rests on weaker evidence and costs far more poles.
+        This governs only the eta0 term: at ordinary moment orders
+        truncation is larger by many orders, so a tight `moment_tol`
+        does not make a calculation accurate on its own. Default value
+        is `None`, meaning `eta0_tol` is used as given.
+    qp_tol : float, optional
+        Requested frontier accuracy in eV, as an alternative to
+        `moment_tol`; setting both is an error. Rests on an observed
+        maximum amplification rather than a measured bound, so it is
+        checked after the fact - `eta0_diagnostics["frontier_bound_ev"]`
+        carries the achieved error through the same factor, and a
+        warning is issued if that exceeds the request. Costs several
+        more poles than the same number asked of `moment_tol`. Default
+        value is `None`.
     eta0_check_refinement : bool, optional
         If `True`, repeat the `"hht"` zeroth moment with four more poles
         and record the difference as a secondary regression signal.
@@ -651,8 +673,16 @@ class GW(BaseGW):
         gf, nelec_error = fock_loop.solve_dyson(se_static, se=se)
 
         readout = frontier_readout(gf)
-        readout["nmom_conserved"] = min(
-            solver.nmom_conserved(achieved_iteration(solver)) for solver in solvers
+        per_sector = tuple(
+            int(solver.nmom_conserved(achieved_iteration(solver))) for solver in solvers
+        )
+        readout["nmom_conserved"] = min(per_sector)
+        # The minimum cannot tell a sector that stepped down from one that had nowhere
+        # further to go, and the order walk needs that distinction to say why a shift
+        # fell to zero. Milestone 3.3 names carrying this the prerequisite for the fix.
+        readout["nmom_conserved_per_sector"] = per_sector
+        readout["nmom_conserved_requested"] = tuple(
+            int(solver.nmom_conserved(solver.max_cycle)) for solver in solvers
         )
 
         # The other quantities the order has to carry with it. The particle number
@@ -810,6 +840,19 @@ class GW(BaseGW):
                 break
             previous = readout
 
+        # Did the frontier stop moving, or did the realization stop changing underneath
+        # it? Past a step-down every higher order realizes exactly the same thing, so the
+        # shift falls to zero because nothing moved rather than because it settled. The
+        # three sectors' conserved counts being identical across the qualifying orders is
+        # what separates the two, and it is a statement about *why* the walk stopped that
+        # the `realization` gate does not make.
+        realized = [f["nmom_conserved_per_sector"] for f in frontiers]
+        vacuous = (
+            chosen is not None
+            and len(realized) >= 3
+            and realized[-1] == realized[-2] == realized[-3]
+        )
+
         record = {
             "tol": tol,
             "cap": int(cap),
@@ -817,6 +860,13 @@ class GW(BaseGW):
             "shifts": [None if x is None else float(x) for x in shifts],
             "frontiers": frontiers,
             "converged": chosen is not None,
+            # Reported beside `converged`, not folded into it. Three designs that folded
+            # them together were tried and rejected (see ROADMAP 3.3); the walk finding its
+            # answer and the realization behind that answer being complete are two facts,
+            # and a reader needs both rather than their conjunction.
+            "settled_vacuously": bool(vacuous),
+            "nmom_conserved_per_sector": [list(r) for r in realized],
+            "nmom_conserved_requested": [list(f["nmom_conserved_requested"]) for f in frontiers],
             "rule": "two consecutive orders within tol, and the particle number in its own",
             "nelec_errors": [float(f["nelec_error"]) for f in frontiers],
             "spectral_weight_deficits": [float(f["spectral_weight_deficit"]) for f in frontiers],
@@ -862,11 +912,9 @@ class GW(BaseGW):
             contributions["eta0"] = {
                 "value": scalar,
                 "unit": "relative",
-                # Milestone 2.4 measured the frontier moving by 30-300x the scalar error
-                # in eV, over water/HF, LiH/HF and ozone/PBE at nmom_max = 7. The upper
-                # end is used, so this is a bound rather than an estimate.
-                "amplification": 300.0,
-                "frontier_ev": scalar * 300.0,
+                # See ETA0_FRONTIER_AMPLIFICATION: a bound, not an estimate.
+                "amplification": eta0_mod.ETA0_FRONTIER_AMPLIFICATION,
+                "frontier_ev": scalar * eta0_mod.ETA0_FRONTIER_AMPLIFICATION,
                 "source": "eta0 certificate; amplification from ROADMAP 2.4",
             }
             residuals = eta0.get("cholesky_residuals")
@@ -1301,7 +1349,19 @@ class GW(BaseGW):
             "nelec": bool(abs(error) <= nelec_tol),
         }
         if order_record is not None:
+            # Two facts, not their conjunction. `moment_order` says the walk found its
+            # answer; `moment_order_vacuous` says whether it found it because the frontier
+            # settled or because the realization froze underneath it and every higher order
+            # returned the same thing. Folding the second into the first was tried three
+            # ways and each failed - see ROADMAP 3.3 - so it is reported beside it.
             gates["moment_order"] = bool(order_record["converged"])
+            if order_record.get("settled_vacuously"):
+                gates["moment_order_vacuous"] = False
+                logging.warn(
+                    "Moment order converged [bad]vacuously[/]: the realization stopped "
+                    "changing before the frontier did, so the shift fell to zero because "
+                    "nothing moved rather than because it settled"
+                )
         if fock_conv is not None:
             gates["fock_loop"] = bool(fock_conv)
         self.dyson_diagnostics = {

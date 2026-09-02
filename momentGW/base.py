@@ -67,6 +67,8 @@ class Base:
             return self.polarizability.lower().endswith("drpa") and self.eta0_method == "clencur"
         if key == "eta0_method":
             return self.polarizability.lower().endswith("drpa")
+        if key in ("moment_tol", "qp_tol"):
+            return self.polarizability.lower().endswith("drpa") and self.eta0_method == "hht"
         if key in ("eta0_tol", "eta0_n_poles", "eta0_check_refinement"):
             return self.polarizability.lower().endswith("drpa") and self.eta0_method == "hht"
         if key == "eta":
@@ -439,6 +441,8 @@ class BaseGW(Base):
         eta0_method="hht",
         eta0_tol=1e-14,
         eta0_n_poles=None,
+        moment_tol=None,
+        qp_tol=None,
         eta0_check_refinement=False,
         moment_order_convergence=False,
         nmom_max_tol=None,

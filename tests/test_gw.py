@@ -4,7 +4,7 @@ import unittest
 
 import numpy as np
 import pytest
-from pyscf import dft, gto, gw, lib, tdscf
+from pyscf import dft, gto, gw, lib, scf, tdscf
 from pyscf.agf2 import mpi_helper
 
 from momentGW import GW
@@ -265,6 +265,75 @@ class Test_GW(unittest.TestCase):
         gw = GW(self.mf, moment_order_convergence=True)
         gw.kernel(1)
         self.assertIsNone(gw.dyson_diagnostics["moment_order_convergence"])
+
+    def test_conserved_order_is_carried_per_sector(self):
+        """Milestone 3.3's prerequisite: the minimum cannot say which sector stepped down."""
+        solver = GW(self.mf, moment_order_convergence=True, nmom_max_tol=1e-8)
+        solver.verbose = 0
+        solver.kernel(5)
+        record = solver.dyson_diagnostics["moment_order"]
+        for per_sector, frontier in zip(record["nmom_conserved_per_sector"], record["frontiers"]):
+            self.assertEqual(len(per_sector), 2)
+            self.assertEqual(frontier["nmom_conserved"], min(per_sector))
+        self.assertEqual(
+            len(record["nmom_conserved_requested"]), len(record["nmom_conserved_per_sector"])
+        )
+
+    def test_vacuous_settling_is_reported_when_the_realization_freezes(self):
+        """Past a step-down the shift falls to zero because nothing moved.
+
+        LiH/STO-3G pins both sectors at (6, 14) and every higher order then returns the
+        same realization, so the walk "converges" on a shift that is zero for the wrong
+        reason. That is ROADMAP 3.3's failure, and it is now said out loud.
+        """
+        mol = gto.M(atom="Li 0 0 0; H 0 0 1.595", basis="sto-3g", verbose=0)
+        mf = scf.RHF(mol).density_fit(auxbasis="weigend")
+        mf.conv_tol = 1e-11
+        mf.kernel()
+
+        solver = GW(mf, moment_order_convergence=True, nmom_max_tol=1e-16)
+        solver.verbose = 0
+        solver.kernel(19)
+        record = solver.dyson_diagnostics["moment_order"]
+
+        self.assertTrue(record["converged"])
+        self.assertTrue(record["settled_vacuously"])
+        realized = record["nmom_conserved_per_sector"]
+        self.assertEqual(realized[-1], realized[-2])
+        self.assertEqual(realized[-2], realized[-3])
+        # Reported beside the gate, never folded into it: the walk did find an answer.
+        gates = solver.dyson_diagnostics["gates"]
+        self.assertTrue(gates["moment_order"])
+        self.assertFalse(gates["moment_order_vacuous"])
+        # It cannot flip the verdict on its own. A realization that froze is a realization
+        # that fell short, so `realization` is already false whenever this fires.
+        self.assertFalse(gates["realization"])
+
+    def test_one_sector_still_improving_is_not_vacuous(self):
+        """The case all three rejected designs got wrong.
+
+        On H2/6-31g from Hartree-Fock the particle pins at 6 while the hole keeps gaining,
+        so the frontier settling is real even though the realization is incomplete. A rule
+        that refused any shortfall would discard this, which is why the flag asks whether
+        anything changed rather than whether everything was delivered.
+        """
+        mol = gto.M(atom="H 0 0 0; H 0 0 0.740", basis="6-31g", verbose=0)
+        mf = scf.RHF(mol).density_fit()
+        mf.conv_tol = 1e-11
+        mf.kernel()
+
+        solver = GW(mf, moment_order_convergence=True, nmom_max_tol=1e-12)
+        solver.verbose = 0
+        solver.kernel(15)
+        record = solver.dyson_diagnostics["moment_order"]
+
+        self.assertTrue(record["converged"])
+        self.assertFalse(record["settled_vacuously"])
+        realized = record["nmom_conserved_per_sector"]
+        requested = record["nmom_conserved_requested"]
+        # Incomplete, and the realization gate says so - two facts, not a contradiction.
+        self.assertLess(realized[-1][1], requested[-1][1])
+        self.assertNotIn("moment_order_vacuous", solver.dyson_diagnostics["gates"])
 
     def test_moment_order_convergence_does_not_change_the_result(self):
         """Switching the estimate on is a diagnostic, not a change of calculation."""
