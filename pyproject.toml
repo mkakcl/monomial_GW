@@ -164,6 +164,10 @@ ignore = [
 "momentGW/rpa.py" = [
     "PLC0415", # import at top of file
 ]
+"momentGW/thc_build.py" = [
+    "PLC0415", # import at top of file -- PyTHC and PySCF are imported lazily so that
+               # this module loads in an environment that has neither
+]
 
 [tool.ruff.lint.pydocstyle]
 convention = "numpy"

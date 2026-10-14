@@ -10,6 +10,7 @@ from pyscf.agf2 import mpi_helper
 from pyscf.pbc import dft, gto
 from scipy.linalg import cholesky
 
+from momentGW import thc_rpa
 from momentGW.gw import GW
 
 
@@ -116,6 +117,57 @@ class Test_THCTDA(unittest.TestCase):
         for a, b in zip(tp1, tp2):
             dif = np.max(np.abs(a - b)) / np.max(np.abs(a))
             self.assertAlmostEqual(dif, 0, 8)
+
+    def test_drpa_nelec(self):
+        gw = GW(self.kmf)
+        gw.thc_opts = dict(file_path=abspath(join(dirname(__file__), "..", "tests/thc.h5")))
+        gw.polarizability = "thc-drpa"
+        conv, gf, se, _ = gw.kernel(nmom_max=1)
+        self.assertAlmostEqual(
+            gf.occupied().moment(0).trace() * 2,
+            self.cell.nelectron,
+            1,
+        )
+
+    def test_drpa_rejects_exact(self):
+        gw = GW(self.kmf)
+        gw.thc_opts = dict(file_path=abspath(join(dirname(__file__), "..", "tests/thc.h5")))
+        gw.polarizability = "thc-drpa"
+        solver = thc_rpa.dRPA(gw, 1, gw.ao2mo())
+        with self.assertRaises(NotImplementedError):
+            solver.kernel(exact=True)
+
+    def test_drpa_moments_vs_cderi(self):
+        # The strongest gate the solver has: build the Cholesky-decomposed vertex *from*
+        # the THC factorisation, so the density-fitted dRPA sees exactly the same
+        # integrals.  Whatever separates the two is then the separable resolvent alone --
+        # the factorisation error is identically zero by construction.
+        if mpi_helper.size > 1:
+            pytest.skip("Doesn't work with MPI")
+
+        gw = GW(self.kmf)
+        gw.polarizability = "thc-drpa"
+        gw.thc_opts = dict(file_path=abspath(join(dirname(__file__), "..", "tests/thc.h5")))
+        th1, tp1 = gw.build_se_moments(5, gw.ao2mo())
+
+        thc_ints = gw.ao2mo()
+        thc_ints.transform()
+        decou = cholesky(thc_ints.cou, lower=True)
+
+        gw.polarizability = "drpa"
+        cd_ints = gw.ao2mo()
+        cd_ints._rot = np.eye(decou.shape[0])
+        Lpx = lib.einsum("Mp,Mx,ML ->Lpx", thc_ints.Lp, thc_ints.Lp, decou)
+        Lia = lib.einsum("Mi,Ma,ML ->Lia", thc_ints.Li, thc_ints.La, decou)
+        cd_ints._blocks["Lpx"] = Lpx
+        cd_ints._blocks["Lia"] = Lia.reshape(Lia.shape[0], -1)
+
+        th2, tp2 = gw.build_se_moments(5, cd_ints)
+
+        for a, b in zip(th1, th2):
+            self.assertAlmostEqual(np.max(np.abs(a - b)) / np.max(np.abs(a)), 0, 8)
+        for a, b in zip(tp1, tp2):
+            self.assertAlmostEqual(np.max(np.abs(a - b)) / np.max(np.abs(a)), 0, 8)
 
     def _test_regression(self, xc, kwargs, nmom_max, ip, ea, name=""):
         cell = gto.Cell()

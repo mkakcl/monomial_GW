@@ -69,6 +69,8 @@ class Base:
             return self.polarizability.lower().endswith("drpa")
         if key in ("eta0_tol", "eta0_n_poles", "eta0_check_refinement"):
             return self.polarizability.lower().endswith("drpa") and self.eta0_method == "hht"
+        if key in ("thc_laplace_tol", "thc_laplace_n_points"):
+            return self.polarizability.lower() == "thc-drpa"
         if key == "eta":
             return self.srg == 0.0
         if key == "srg":
@@ -343,7 +345,8 @@ class BaseGW(Base):
         Default value is `False`.
     polarizability : str, optional
         Type of polarizability to use, can be one of `("drpa",
-        "drpa-exact", "dtda", "thc-dtda"). Default value is `"drpa"`.
+        "drpa-exact", "dtda", "thc-dtda",
+        "thc-drpa"). Default value is `"drpa"`.
     npoints : int, optional
         Number of numerical integration points. Only used by the legacy
         Clenshaw-Curtis quadrature (`eta0_method="clencur"`). Default
@@ -427,6 +430,17 @@ class BaseGW(Base):
         self-consistent scheme. Default value is `"ia"`.
     compression_tol : float, optional
         Tolerance for the compression. Default value is `1e-10`.
+    thc_laplace_tol : float, optional
+        Requested relative residual of the separable representation of the
+        particle-hole resolvent, used by `"thc-drpa"` only. Cannot be
+        `eta0_tol`: the fit is solved in float64 and does not improve below
+        `momentGW.laplace.TOL_FLOOR`, which is above the `eta0_tol` default.
+        Default value is `1e-10`.
+    thc_laplace_n_points : int, optional
+        Fixed number of exponents. If `None`, the smallest grid meeting
+        `thc_laplace_tol` is found by search. An explicit count is an
+        instruction, so a tolerance miss is reported rather than raised.
+        Default value is `None`.
     thc_opts : dict, optional
         Dictionary of options to be used for THC calculations. Current
         implementation requires a filepath to import the THC integrals.
@@ -464,6 +478,8 @@ class BaseGW(Base):
         ),
         compression="ia",
         compression_tol=1e-10,
+        thc_laplace_tol=1e-10,
+        thc_laplace_n_points=None,
         thc_opts=OrderedDict(
             file_path=None,
         ),

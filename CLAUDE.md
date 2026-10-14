@@ -72,3 +72,29 @@ bit-comparable with one recorded without it. Say so when reporting such a run.
 Work is driven by [`ROADMAP.md`](ROADMAP.md). Milestones 1 to 4 cover the **restricted
 molecular** `G0W0`/`drpa` path only. The unrestricted and periodic solvers are deliberately
 deferred to Milestone 6 — do not extend changes into them to make things look finished.
+
+## Why THC exists here: `O(N^3)` time and `O(N^2)` memory
+
+**Every step on a tensor-hypercontracted path must be `O(N^3)` in operations and `O(N^2)`
+in memory. That requirement is the entire reason the THC work is being done, and it is not
+negotiable against a constant factor.**
+
+A THC route that is faster than the density-fitted one but still quartic has no reason to
+exist — the density-fitted path is already there, is simpler, and carries a certified error
+budget. THC is worth its accuracy loss and its rank-squared prefactor only because it
+changes the exponent. Judge it on that and nothing else:
+
+- **A prefactor is not the point.** Today's THC construction needs a rank around 11 times
+  `nao` for meV-level quasiparticle agreement, which puts the measured crossover near a
+  thousand orbitals. That is a reason to expect the *constant* to improve as construction
+  algorithms do — not a reason to accept a worse exponent in the solver, which no
+  improvement in the integrals can rescue.
+- **An `O(N^4)` step anywhere makes the whole path `O(N^4)`.** Check every new routine
+  against this before it lands, and check the ones already there: a single `einsum` over an
+  orbital index inside a loop over another orbital index is the usual way it happens.
+- **An `O(N^3)` array is the same failure in memory.** Anything with three orbital or
+  auxiliary indices held at once has to be reformulated, streamed, or blocked.
+
+State the operation and memory scaling of any THC routine in its docstring, in terms of
+`nao`, `naux` and `nmom_max`, and treat a violation as a defect rather than an
+optimisation opportunity. [`THC.md`](THC.md) records the design and the measurements.

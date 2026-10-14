@@ -135,7 +135,8 @@ class scGW(evGW):
         Default value is `False`.
     polarizability : str, optional
         Type of polarizability to use, can be one of `("drpa",
-        "drpa-exact", "dtda", "thc-dtda"). Default value is `"drpa"`.
+        "drpa-exact", "dtda", "thc-dtda",
+        "thc-drpa"). Default value is `"drpa"`.
     npoints : int, optional
         Number of numerical integration points. Default value is `48`.
     optimise_chempot : bool, optional

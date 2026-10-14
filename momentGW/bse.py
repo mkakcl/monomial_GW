@@ -64,7 +64,8 @@ class BSE(Base):
         GW object.
     polarizability : str
         Type of polarizability to use, can be one of `("drpa",
-        "drpa-exact", "dtda", "thc-dtda"). Default value is the same
+        "drpa-exact", "dtda", "thc-dtda",
+        "thc-drpa"). Default value is the same
         as the underling GW object.
     excitation : str
         Type of excitation, can be one of `("singlet", "triplet")`.
@@ -497,7 +498,8 @@ class cpBSE(BSE):
         Regularisation parameter. Default value is `0.1`.
     polarizability : str, optional
         Type of polarizability to use, can be one of `("drpa",
-        "drpa-exact", "dtda", "thc-dtda"). Default value is `"drpa"`.
+        "drpa-exact", "dtda", "thc-dtda",
+        "thc-drpa"). Default value is `"drpa"`.
     excitation : str, optional
         Type of excitation, can be one of `("singlet", "triplet")`.
         Default value is `"singlet"`.

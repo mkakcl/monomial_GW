@@ -1,0 +1,455 @@
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage[top=2.6cm, bottom=2.5cm, left=2.4cm, right=2.4cm]{geometry}
+\usepackage{amsmath, amssymb, amsfonts, mathtools, bm, nicefrac}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{fancyhdr}
+\usepackage[colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue]{hyperref}
+
+% Matches commands.sty in Tensor_hyper_contraction__THC_.
+\newcommand{\mat}[1]{{\mathbf{#1}}}
+\newcommand{\parth}[1]{\left(#1\right)}
+\newcommand{\sqrbrckts}[1]{\left[#1\right]}
+
+\newcommand{\Dcal}{\mathcal{A}}
+\newcommand{\Qcal}{\mathcal{Q}}
+\newcommand{\Ncal}{\mathcal{N}}
+\newcommand{\eb}{\tilde{\epsilon}}
+\newcommand{\Had}{\circ}
+\newcommand{\code}[1]{\texttt{\small #1}}
+
+\setlength\parindent{0pt}
+\setlength\parskip{8pt}
+
+\pagestyle{fancy}
+\setlength{\headheight}{14pt}
+\lhead{\normalsize\textrm{Marcus Allen}}
+\rhead{THC dRPA: attempted and replaced}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\title{\vspace{-1.5cm}Tensor hypercontraction for the dRPA moments:\\
+what was attempted, and what replaces it}
+\author{Marcus Allen}
+\date{26 August 2026}
+
+\begin{document}
+\maketitle
+\vspace{-1.0cm}
+
+\begin{abstract}
+\noindent
+Between September 2025 and March 2026 a tensor-hypercontracted dRPA was written eleven
+times. Every version shares one architecture and one difficulty: the particle--hole
+denominator is not separable in the occupied and virtual indices, so the pair space was
+partitioned by the size of the denominator relative to the quadrature point and each region
+given a different expansion. This note sets out those expansions explicitly, shows why the
+partition was forced --- a separable builder can only address a rectangle in the pair space,
+while the region it needs is a staircase --- and records where the accuracy was lost. It
+then gives the replacement. The partition is an artefact of an oscillatory inner quadrature
+rather than of the factorisation; representing the denominator on a fitted grid of
+exponentials shared by every pole removes the quadrature, and with it the partition, the
+threshold parameters and about nine hundred lines. A companion note derives the replacement
+in full; here the emphasis is on the correspondence between the two.
+\end{abstract}
+
+\section{The object, in one paragraph}
+
+Let $D_{ia} = \epsilon_a - \epsilon_i > 0$ be the particle--hole gaps and $\mat{V}$ the
+vertex. The even density--density moments follow from
+\begin{align}
+    \Ncal^{(m)}
+    = \frac{2}{\pi} \int_0^\infty
+      \parth{\mat{I} + 4\Qcal^{(1)}(z)}^{-1} \Qcal^{(m+1)}(z) \,\mathrm{d}z ,
+    \qquad
+    \Qcal^{(k)}(z) = \mat{V}\, \frac{\mat{D}^{k}}{\mat{D}^2 + z^2}\, \mat{V}^T ,
+    \label{eq:compact}
+\end{align}
+the odd ones from the shift-independent $\Dcal^{(m)} = \mat{V}\mat{D}^m\mat{V}^T$, and both
+families feed one auxiliary-space recursion. Under tensor hypercontraction the vertex
+factorises across the pair, $V_{P,ia} \to X_{iP} X_{aP}$ (times a Cholesky factor of the
+Coulomb matrix), so
+\begin{align}
+    \Qcal^{(k)}_{PQ} = \sum_{ia} \parth{X_{iP} X_{iQ}} \parth{X_{aP} X_{aQ}}\, f(D_{ia}) ,
+    \qquad f(D) = \frac{D^k}{D^2+z^2} .
+    \label{eq:contract}
+\end{align}
+The two bracketed factors separate; $f(D_{ia})$ does not. Everything below is about that
+one obstruction.
+
+\section{The architecture every previous version shared}
+
+All eleven versions do the same thing. An outer Clenshaw--Curtis or Gauss--Laguerre
+quadrature on $[0,\infty)$ discretises \eqref{eq:compact}, with its grid spacing optimised
+per calculation against an exactly evaluable diagonal integral; at each point $z$ the
+auxiliary-space objects $\Qcal^{(m+1)}(z)$ are assembled, and the accumulation
+\begin{align}
+    \Ncal^{(m)} \;\mathrel{+}= \; w_z \,\frac{2}{\pi}
+    \parth{\mat{I} + 4\Qcal^{(1)}(z)}^{-1} \Qcal^{(m+1)}(z)
+    \label{eq:accum}
+\end{align}
+is performed. Equation \eqref{eq:accum} is correct and is kept: the implementation
+without hypercontraction, \code{rpa\_new\_clean}, does exactly this and works. What varies between
+versions is only how $\Qcal^{(m+1)}(z)$ is obtained from \eqref{eq:contract}, and that is
+where the complexity lives.
+
+Because $f(D)$ is not separable, the pair space was partitioned by the ratio
+\begin{align}
+    r_{ia} = \frac{D_{ia}}{z}
+\end{align}
+into three regions, each with its own expansion. The three are set out next; each is stated
+first as a scalar identity in $D$ and then as the auxiliary-space object the code builds.
+
+\subsection{\texorpdfstring{The series branch: $r \ll 1$}{The series branch: r much less than 1}}
+
+For $D < z$ the resolvent is expanded as a geometric series in $r^2$,
+\begin{align}
+    \frac{D^{2\rho+1}}{D^2+z^2}
+    \;=\; \sum_{c \ge 0} (-1)^c \, \frac{D^{2\rho+1+2c}}{z^{2c+2}} ,
+    \qquad \text{convergent iff } D < z ,
+    \label{eq:series}
+\end{align}
+so that, contracted with the vertex,
+\begin{align}
+    \Qcal^{(2\rho+1)}(z) \;=\; \sum_{c \ge 0} \frac{(-1)^c}{z^{2c+2}}\, \Dcal^{(2\rho+1+2c)} .
+    \label{eq:seriesQ}
+\end{align}
+This is entirely separable --- every term is one of the polynomial objects
+$\Dcal^{(j)}$ --- and needs no integral at all. Its cost is that it requires $\Dcal$ at
+powers far \emph{above} the moment order: truncating \eqref{eq:seriesQ} at $C$ terms needs
+$\Dcal^{(j)}$ up to $j = 2\rho + 1 + 2C$. In the code this truncation is the parameter
+\code{expan}, set to $41$ in \code{thc\_26\_10}, raised to $51$ in
+\code{small\_Q\_working\_THC}, and cut back to $12$ in the November refactors. The
+corresponding routine is \code{build\_small}.
+
+\subsection{The polynomial branch: the exact finite part}
+
+For the complementary regime the same ratio is used the other way. Polynomial division
+gives, exactly and for every pair,
+\begin{align}
+    \frac{D^{2\rho+1}}{D^2+z^2}
+    \;=\; \underbrace{\sum_{k=0}^{\rho-1} (-z^2)^k D^{2\rho-1-2k}}_{\text{separable}}
+    \;+\; \underbrace{(-z^2)^{\rho}\, \frac{D}{D^2+z^2}}_{\text{not separable}} ,
+    \label{eq:division}
+\end{align}
+which in the auxiliary space reads
+\begin{align}
+    \Qcal^{(2\rho+1)}(z) \;=\; \sum_{k=0}^{\rho-1} (-z^2)^k\, \Dcal^{(2\rho-1-2k)}
+    \;+\; (-z^2)^{\rho}\, \Qcal^{(1)}(z) .
+    \label{eq:divisionQ}
+\end{align}
+The finite sum is \code{build\_large}. It is exact, cheap and needs no expansion parameter,
+but it leaves a remainder --- $\Qcal^{(1)}(z)$ --- which is precisely the object that
+motivated the whole exercise, now carrying a prefactor $(-z^2)^{\rho}$ that grows with the
+moment order.
+
+\subsection{The Laplace branch: the remainder, and an inner quadrature}
+
+The remainder is reached through the Laplace representation
+\begin{align}
+    \frac{D}{D^2+z^2} \;=\; \int_0^\infty \cos(zp)\, e^{-Dp} \,\mathrm{d}p ,
+    \qquad
+    e^{-D_{ia} p} = e^{\epsilon_i p}\, e^{-\epsilon_a p} ,
+    \label{eq:laplace}
+\end{align}
+whose exponential \emph{is} separable. Contracting \eqref{eq:laplace} with the vertex gives
+\begin{align}
+    \Qcal^{(1)}(z) = \int_0^\infty \cos(zp)\, \mat{M}(p) \,\mathrm{d}p ,
+    \qquad
+    M_{PQ}(p) = \sqrbrckts{\sum_i X_{iP} X_{iQ} e^{\epsilon_i p}}
+                \sqrbrckts{\sum_a X_{aP} X_{aQ} e^{-\epsilon_a p}} ,
+    \label{eq:Mp}
+\end{align}
+an elementwise product of two $O(N^3)$ objects. Together, \eqref{eq:divisionQ} and
+\eqref{eq:Mp} are \code{build\_large} plus the correction routine that follows it:
+\begin{align}
+    \Qcal^{(2\rho+1)}(z) \;=\; \sum_{k=0}^{\rho-1} (-z^2)^k \Dcal^{(2\rho-1-2k)}
+    \;+\; (-z^2)^{\rho} \sum_{p} w_p \cos(z p)\, \mat{M}(p) .
+    \label{eq:largeQ}
+\end{align}
+
+The kernel \eqref{eq:Mp} is correct and is kept. The difficulty is the quadrature over $p$.
+The integrand oscillates at frequency $z$ while decaying at rate $D$, so a rule with one
+scale cannot resolve it when $z \gg D$: the oscillation is fast and the decay slow, and the
+cancellation between half-periods is what has to be captured. Every version therefore
+carries a nested optimisation --- \code{optimise\_q\_quad}, which rescales an inner
+Gauss--Laguerre rule at \emph{every outer point} by minimising the error of a scalar
+integral it can evaluate in closed form. Even so, the inner rule was found to be delicate:
+the point count was reduced from $20$ to $14$ with the code comment ``\code{20 starts to
+introduce error on e-9}'', an unusual failure direction that indicates the optimisation, not
+the resolution, was setting the accuracy.
+
+\subsection{The integration-by-parts family, and what it says about the split}
+
+Integrating \eqref{eq:laplace} by parts twice relates the two branches directly. With
+$\mathcal{F} = 2\int_0^\infty \cos(zp) e^{-Dp}\mathrm{d}p$,
+\begin{align}
+    \mathcal{F} \;=\; \frac{2D}{z^2} - \parth{\frac{D}{z}}^2 \mathcal{F} ,
+\end{align}
+and iterating gives the family
+\begin{align}
+    \mathcal{F} \;=\; \frac{2}{z}\sum_{l} (-1)^l r^{2l-1} \;+\; (-1)^{l+1} r^{2l}\,\mathcal{F} ,
+    \qquad r = \frac{D}{z} .
+    \label{eq:ibp}
+\end{align}
+Each member of \eqref{eq:ibp} is exact; they differ in how much of the answer sits in the
+closed-form prefactor and how much in the integral, and therefore in how much any error in
+the integral is amplified. Three values make the point:
+\begin{center}
+\begin{tabular}{llll}
+\toprule
+$r$ & prefactor on $\mathcal{F}$ & effect on an integration error & regime \\
+\midrule
+$0.1$ & $10^{-4}$ & suppressed by four decades & $z \gg D$ \\
+$1$   & $1$       & neither suppressed nor amplified; polynomial part vanishes & $z \sim D$ \\
+$10$  & $10^{4}$  & amplified by four decades & $z \ll D$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+So the partially integrated form should be used up to $r = 1$ and the direct integral at
+$r \approx 1$, and neither is safe on the other side. That prescription is a statement about
+the individual pair $(i,a)$ --- and it is the sentence on which the previous line of work
+stalled, because the prescription is per pair while the machinery is not.
+
+\section{Why the partition was forced}
+
+A hypercontracted builder can evaluate a restricted $\Dcal$ only over a product set. For
+$S_i \subseteq \{i\}$ and $S_a \subseteq \{a\}$,
+\begin{align}
+    \Dcal^{(m)}\sqrbrckts{S_i \times S_a}_{PQ}
+    = \sum_{p=0}^{m} \binom{m}{p}
+      \sqrbrckts{\sum_{i \in S_i} X_{iP} X_{iQ} (-\epsilon_i)^p}
+      \sqrbrckts{\sum_{a \in S_a} X_{aP} X_{aQ} \epsilon_a^{\,m-p}} ,
+    \label{eq:rectangle}
+\end{align}
+and likewise for \eqref{eq:Mp}. The two brackets are independent sums, so the only regions
+reachable at $O(N^3)$ are \textbf{rectangles} $S_i \times S_a$.
+
+The region the physics asks for is not a rectangle. With the orbital energies sorted
+ascending, the set on which the series \eqref{eq:series} converges is
+\begin{align}
+    R_\theta = \{(i,a) : \epsilon_a - \epsilon_i < \theta \}
+             = \{(i,a) : a < a_{\max}(i)\} ,
+    \qquad a_{\max}(i) \text{ non-decreasing in } i ,
+\end{align}
+a \textbf{staircase}: as $\epsilon_i$ rises the admissible $\epsilon_a$ rises with it. A
+staircase with $K$ steps is a union of $K$ rectangles, and can be assembled by
+inclusion--exclusion --- for two steps,
+\begin{align}
+    \bm{1}_{R} = \bm{1}_{I \times A} - \bm{1}_{I_1 \times A_1} ,
+    \qquad
+    \Dcal\sqrbrckts{R} = \Dcal\sqrbrckts{I \times A} - \Dcal\sqrbrckts{I_1 \times A_1} ,
+    \label{eq:inclusion}
+\end{align}
+which is literally the line
+\code{(O$_1$+O$_2$)*(V$_1$+V$_2$) - O$_1$*V$_1$} in \code{get\_D\_exp\_list\_zero}. Each
+extra step is another rectangle, another pair of collocation contractions, and another term
+whose sign must be tracked. Since the boundary $a_{\max}(i)$ moves with $z$, the
+decomposition has to be recomputed along the outer quadrature, and pairs migrate between
+branches as $z$ sweeps --- which is what the \code{book} array, \code{d\_above\_one} and
+\code{d\_lower} exist to track.
+
+Two thresholds control the whole apparatus and neither is derived: \code{d\_thres}
+($\nicefrac{1}{3}$, later $0.4$, then $0.36$) sets where the series is trusted, and
+\code{integral\_switch} ($\nicefrac{1}{0.7}$) sets where the integral takes over.
+
+\section{The line of attempts}
+
+\begin{center}
+\begin{longtable}{@{}p{1.8cm}>{\raggedright\arraybackslash}p{4.5cm}>{\raggedright\arraybackslash}p{8.9cm}@{}}
+\toprule
+date & file & what changed \\
+\midrule
+\endhead
+2025-09-01 & \code{take1\_thc\_rpa} & first version; a per-pair \code{book} array tracks
+    which $(i,a)$ have migrated between branches \\
+2025-10-13 & \code{working\_drpa\_}\allowbreak\code{thc\_code} & \code{book} replaced by index slices;
+    \code{build\_large\_1/2/3} for one, two or three rectangles \\
+2025-10-15/16 & \code{working THC}, \code{working\_THC\_2} & two independent inner
+    quadratures \\
+2025-10-22 & \code{pre\_combine\_}\allowbreak\code{integrals\_thc} & integrals combined; the Cholesky
+    factorisation of $\mat{Z}$ removed \\
+2025-10-26 & \code{thc\_26\_10} & the splits precomputed once into an array indexed by
+    quadrature point; each $\Qcal$ checked inline against an exact $O(N^4)$ evaluation \\
+2025-10-27 & \code{small\_Q\_working\_THC} & only even orders stored, halving $\Qcal$;
+    the $\Dcal$ builder vectorised \\
+2025-10-29 & \code{THC\_pre\_one\_}\allowbreak\code{integral\_type} & a \code{numba} kernel for the binomial
+    contraction \\
+2025-11-06/12 & \code{midway\_refactor\_THC},\newline \code{THC\_take2\_pre\_}\allowbreak\code{cleanup} & the binomial
+    split by parity to halve the working set; a \code{tail} branch \\
+2026-01-03 & \code{RPA\_solids\_thc\_logic} & the periodic plan: sum over the full
+    $n_k^2$ rather than per $\mathbf{q}$, since $\mat{Z}$ differs per $\mathbf{q}$ \\
+2026-02-02/04 & \code{rpa\_thc\_solids\_wip},\newline \code{backup\_get\_D\_}\allowbreak\code{mask\_start} & slices
+    replaced by boolean masks on the orbital indices --- the honest form of
+    \eqref{eq:rectangle} \\
+2026-03-04 & \code{RPA\_Solids\_THC\_}\allowbreak\code{Working\_Q} & three mask sets, with an exact reference
+    computed alongside for validation; 1461 lines \\
+\bottomrule
+\end{longtable}
+\end{center}
+
+The trajectory is a steady fight with the bookkeeping of \eqref{eq:inclusion}, never with
+the physics. The final version is explicit about it: its three mask sets are named
+\code{series}, \code{low\_int} and \code{high\_int}, and it carries an $O(N^4)$ evaluation
+of $\Qcal$ in parallel with the $O(N^3)$ one so that the two can be compared point by point.
+
+\section{Where it broke}
+
+That inline comparison recorded the failure directly. On an eight-carbon alkane, at
+quadrature points where a single region is active the check passes:
+\begin{center}
+\code{point 2.6834535605444727 / One integral / final True 2.47955322265625e-05}
+\end{center}
+and at points where the partition is active it does not:
+\begin{center}
+\code{point 1.6810945450652695 / Two integrals / final False 0.0013410896062850952}
+\end{center}
+a relative error of $2.6\times10^{-3}$ in $\Qcal^{(10)}$ against $2.5\times10^{-5}$ where no
+split occurs --- two decades, and at the boundary rather than in the kernel. The failure is
+in \eqref{eq:inclusion} and its moving boundary, not in \eqref{eq:series},
+\eqref{eq:divisionQ} or \eqref{eq:Mp}.
+
+\section{What replaces it}
+
+Three changes, of which only the second is new physics.
+
+\subsection{The outer quadrature is already gone}
+
+The zeroth moment in \code{momentGW} is no longer computed by an optimised quadrature over
+$z$. A certified rational approximation $x^{-1/2} \approx \sum_j w_j (x+s_j)^{-1}$ on a
+rigorous spectral enclosure turns \eqref{eq:compact} into a finite pole sum,
+\begin{align}
+    \Ncal^{(m)}
+    = \sum_j w_j \parth{\mat{I} + 4\Qcal^{(1)}(s_j)}^{-1} \Qcal^{(m+1)}(s_j) ,
+    \qquad
+    \Qcal^{(k)}(s) = \mat{V}\, \frac{\mat{D}^{k}}{\mat{D}^2 + s}\, \mat{V}^T ,
+    \label{eq:poles}
+\end{align}
+over 18 to 19 poles at the production tolerance. The shifts are a fixed, known set. This
+happened on the density-fitted side for its own reasons, and it removes
+\code{optimise\_main\_quad} and the scale optimisation the hypercontracted code inherited.
+
+\subsection{The inner quadrature becomes a fit}
+
+The oscillatory rule over $p$ is replaced by a least-squares fit on a set of exponents
+$\{t_k\}$ chosen once,
+\begin{align}
+    \frac{D}{D^2+s} \;\approx\; \sum_k c_k(s)\, e^{-t_k D} ,
+    \qquad
+    e^{-t_k D} = e^{t_k(\epsilon_i - \mu)}\, e^{-t_k(\epsilon_a - \mu)} ,
+    \label{eq:expfit}
+\end{align}
+made against the true set of gaps with relative-error weighting. Structurally this is
+\eqref{eq:Mp} with $w_p \cos(z p) \to c_k(s)$; the separable kernel $\mat{M}$ is unchanged.
+What changes is everything about how the coefficients are obtained:
+
+\begin{center}
+\begin{tabular}{@{}>{\raggedright\arraybackslash}p{3.2cm}>{\raggedright\arraybackslash}p{5.4cm}>{\raggedright\arraybackslash}p{5.6cm}@{}}
+\toprule
+& previously & now \\
+\midrule
+coefficient & $w_p \cos(z p)$, from a rule & $c_k(s)$, from a fit \\
+integrand & oscillatory, scale set by $z$ & none \\
+grid & re-optimised at every outer point & chosen once, shared by every pole \\
+varies with moment order & no & no \\
+varies with the pole & yes, through the whole rule & only through $c_k$ \\
+error control & inferred from the rule & measured on the gaps that are used \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+Because the exponents are shared, the expensive object $\mat{M}(t_k)$ is built once and
+reused by every pole and every moment order --- where previously it was rebuilt for each
+$(z, p)$ pair. The exponents are chosen by pivoted QR on the exponential basis rather than
+laid out geometrically, which reaches the achievable floor with roughly forty rather than
+sixty points, and the search returns the smallest grid meeting a requested residual: 21
+exponents for lithium hydride, 32 for water, 36 for ozone, 40 for benzene at $10^{-11}$.
+
+\subsection{The partition is not replaced --- it is deleted}
+
+With \eqref{eq:expfit} valid over the whole range of $D$ at once, there is no $r$-dependent
+choice to make and no region to build. The powers of the denominator come from the binomial
+expansion, exactly:
+\begin{align}
+    \Qcal^{(m+1)}(s) \;\approx\; \sum_k c_k(s) \sum_{p=0}^{m} \binom{m}{p}\,
+        \mat{O}_p(t_k) \Had \mat{U}_{m-p}(t_k) ,
+    \label{eq:routeB}
+\end{align}
+with $\Had$ the elementwise product and
+\begin{align}
+    \sqrbrckts{\mat{O}_p(t)}_{PQ} = \sum_i X_{iP} X_{iQ} (-\eb_i)^p e^{t\eb_i} ,
+    \qquad
+    \sqrbrckts{\mat{U}_q(t)}_{PQ} = \sum_a X_{aP} X_{aQ} \eb_a^{\,q} e^{-t\eb_a} ,
+\end{align}
+referenced to the chemical potential so that both exponentials lie in $[0,1]$ and every
+binomial term is a product of like-signed factors. Equation \eqref{eq:routeB} is
+\code{get\_D\_exp\_list} --- the kernel the previous versions already had. It is kept
+because, measured against an exact evaluation of the same pole sum, it is the only one of
+three candidates that survives to high moment order: the polynomial route
+\eqref{eq:divisionQ} loses about one and a half decades per order to the $(-s)^k$
+prefactors, and fitting $D^{m+1}/(D^2+s)$ directly saturates, a growing function being
+unreachable from decaying exponentials without cancellation that double precision will not
+carry.
+
+\subsection{What is now certified}
+
+Writing $\delta$ for the fit residual and $\varepsilon = \max_{ia} |\delta(D_{ia})| /
+g_s(D_{ia})$, positive semidefiniteness of $\Qcal^{(m+1)}$ gives
+\begin{align}
+    \big\| \Delta \Qcal^{(m+1)} \big\|_2 \;\le\; \varepsilon \big\| \Qcal^{(m+1)} \big\|_2
+    \qquad \text{for every } m .
+\end{align}
+One measured scalar bounds the relative spectral error at every moment order. The previous
+architecture had no analogous statement: its error was the sum of a truncation in
+\eqref{eq:series}, a quadrature error in \eqref{eq:Mp}, and a boundary error in
+\eqref{eq:inclusion}, of which only the first was controlled by a parameter anyone set.
+
+\section{Correspondence}
+
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+ & previous & now \\
+\midrule
+outer integral & optimised Clenshaw--Curtis in $z$ & certified poles $s_j$ \\
+non-separable factor & partitioned by $r = D/z$ & fitted once, all $D$ \\
+$r \ll 1$ & series \eqref{eq:seriesQ}, \code{expan} $= 12$--$51$ terms & --- \\
+$r \gg 1$ & division \eqref{eq:divisionQ} + inner quadrature & --- \\
+boundary & inclusion--exclusion over rectangles & --- \\
+thresholds & \code{d\_thres}, \code{integral\_switch} & --- \\
+inner grid & re-optimised per outer point & shared, selected once \\
+separable kernel & $\mat{M}(p)$, eq.~\eqref{eq:Mp} & unchanged \\
+powers of $D$ & series or division & binomial \eqref{eq:routeB}, exact \\
+error control & three uncontrolled sources & one measured residual \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+The kernel and the accumulation \eqref{eq:accum} survive intact. What goes is the machinery
+between them: three branches, two thresholds, the rectangle decomposition, the migration
+bookkeeping and the nested optimisation --- roughly nine hundred of the fourteen hundred
+lines of the last version.
+
+\section{Status}
+
+The scalar layer of \eqref{eq:expfit} --- candidate exponents, pivoted selection, the
+per-pole fit, the search for the smallest grid meeting a residual, and the diagnostics ---
+is implemented and tested. The density--density and self-energy stages of the
+hypercontracted dTDA have been made cubic in operations and quadratic in memory, which is
+the requirement the whole construction exists to satisfy. What remains for the dRPA is the
+assembly \eqref{eq:routeB} against the collocation matrices and the solver that drives
+\eqref{eq:poles} and the moment recursion.
+
+One caution carried forward from the record above. The previous line of work was not wrong
+about the kernel, and it was not short of effort; it was defeated by a boundary that had to
+be maintained. Any future proposal that reintroduces a per-pair choice --- a threshold, a
+mask, a regime --- should be measured at the boundary before it is measured anywhere else,
+because that is where the two decades were lost.
+
+\end{document}

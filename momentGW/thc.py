@@ -4,7 +4,7 @@ import h5py
 import numpy as np
 from scipy.special import binom
 
-from momentGW import ints, logging, util
+from momentGW import ints, logging, mpi_helper, util
 from momentGW.logging import init_logging
 from momentGW.tda import dTDA as DFdTDA
 
@@ -293,7 +293,7 @@ class dTDA(DFdTDA):
     @logging.with_timer("Density-density moments")
     @logging.with_status("Constructing density-density moments")
     def build_dd_moments(self):
-        """Build the moments of the density-density response using tensor-hypercontraction.
+        r"""Build the moments of the density-density response using tensor-hypercontraction.
 
         Returns
         -------
@@ -305,61 +305,95 @@ class dTDA(DFdTDA):
         Unlike the standard `momentGW.tda` implementation, this method
         scales as :math:`O(N^3)` with system size instead of
         :math:`O(N^4)`.
+
+        The moments obey
+
+        .. math::
+            \zeta^{(m)} = \mathcal{D}^{(m)}
+            + 2 \sum_{j<m} \mathcal{D}^{(m-1-j)} Z \zeta^{(j)},
+
+        with :math:`\mathcal{D}^{(m)} = X^T D^m X` the auxiliary-space image of the
+        particle-hole gaps to the mth power.  Because
+        :math:`D^m = (\epsilon_a - \epsilon_i)^m` expands binomially into separable
+        products of orbital energies, each :math:`\mathcal{D}^{(m)}` costs one pass
+        over the collocation matrices; there are `nmom_max + 1` of them, not one per
+        pair of moment orders.
         """
 
-        # Initialise the moments
-        zeta = np.zeros((self.nmom_max + 1, self.naux, self.naux))
         ei = self.mo_energy_w[self.mo_occ_w > 0]
         ea = self.mo_energy_w[self.mo_occ_w == 0]
+        orders = np.arange(self.nmom_max + 1)
 
-        # Get the zeroth order moment
-        cou_occ = np.dot(self.Li, self.Li.T)
-        cou_vir = np.dot(self.La, self.La.T)
-        zeta[0] = cou_occ * cou_vir
+        # Separable factors of D^m.  The occupied energies carry the sign of the gap, so
+        # every binomial term below is a product of like-signed factors.
+        cou_occ = util.einsum("mi,Pi,Qi->mPQ", np.power.outer(-ei, orders).T, self.Li, self.Li)
+        cou_vir = util.einsum("ma,Pa,Qa->mPQ", np.power.outer(ea, orders).T, self.La, self.La)
 
-        # Initialise intermediate arrays
-        cou_d_left = np.zeros((self.nmom_max + 1, self.naux, self.naux))
-        cou_d_only = np.zeros((self.nmom_max + 1, self.naux, self.naux))
-        cou_left = np.eye(self.naux)
-        cou_square = np.dot(self.cou, zeta[0])
+        # Auxiliary-space images of D^m
+        cou_d = np.zeros((self.nmom_max + 1, self.naux, self.naux))
+        for m in range(self.nmom_max + 1):
+            for j in range(m + 1):
+                cou_d[m] += binom(m, j) * cou_occ[j] * cou_vir[m - j]
+        del cou_occ, cou_vir
 
-        for i in range(1, self.nmom_max + 1):
-            # Update intermediate arrays
-            cou_d_left[0] = cou_left
-            cou_d_left = np.roll(cou_d_left, 1, axis=0)
-            cou_left = np.dot(cou_square, cou_left) * 2.0
-
-            cou_ei_max = util.einsum("i,Pi,Qi->PQ", ei**i, self.Li, self.Li) * pow(-1, i)
-            cou_ea_max = util.einsum("a,Pa,Qa->PQ", ea**i, self.La, self.La)
-            cou_d_only[i] = cou_ea_max * cou_occ + cou_ei_max * cou_vir
-
-            for j in range(1, i):
-                cou_ei = util.einsum("i,Pi,Qi->PQ", ei**j, self.Li, self.Li) * pow(-1, j)
-                cou_ea = util.einsum("a,Pa,Qa->PQ", ea ** (i - j), self.La, self.La) * binom(i, j)
-                cou_d_only[i] += cou_ei * cou_ea
-                if j == (i - 1):
-                    cou_left += np.dot(self.cou, cou_d_only[j]) * 2.0
-                else:
-                    cou_left += (
-                        np.linalg.multi_dot((self.cou, cou_d_only[i - 1 - j], cou_d_left[i - j]))
-                        * 2.0
-                    )
-
-                zeta[i] += np.dot(cou_d_only[j], cou_d_left[j])
-
-            zeta[i] += cou_d_only[i]
-            zeta[i] += np.dot(zeta[0], cou_left)
+        # Recursion
+        zeta = cou_d.copy()
+        for m in range(1, self.nmom_max + 1):
+            for j in range(m):
+                zeta[m] += np.linalg.multi_dot((cou_d[m - 1 - j], self.cou, zeta[j])) * 2.0
 
         return zeta
+
+    @logging.with_timer("Green's function collocation moments")
+    @logging.with_status("Constructing Green's function collocation moments")
+    def build_gf_collocation_moments(self, occupied):
+        r"""Build the energy-weighted collocation moments of one Green's function sector.
+
+        Parameters
+        ----------
+        occupied : bool
+            Whether to build the occupied sector.
+
+        Returns
+        -------
+        cou_g : numpy.ndarray
+            Moments, shape ``(nmom_max + 1, naux, naux)``.
+
+        Notes
+        -----
+        These are
+
+        .. math::
+            G^{(j)}_{PQ} = \sum_{x \in \text{sector}} \epsilon_x^j\, X_{xP} X_{xQ} ,
+
+        the only place the Green's function orbital index appears in the self-energy
+        build.  Summing it out here rather than carrying it is what keeps
+        `build_se_moments` cubic; see its notes.  One sector is built at a time because
+        both at once would double the largest array the routine holds.
+
+        Operations are ``O(nmom_max * naux^2 * nmo)`` and memory
+        ``O(nmom_max * naux^2)``.
+        """
+
+        q0, q1 = self.mpi_slice(self.mo_energy_g.size)
+        energies = self.mo_energy_g[q0:q1]
+        mask = (self.mo_occ_g[q0:q1] > 0) == occupied
+        Lx = self.integrals.Lx[:, q0:q1][:, mask]
+
+        if not np.any(mask):
+            return mpi_helper.allreduce(np.zeros((self.nmom_max + 1, self.naux, self.naux)))
+
+        weights = np.power.outer(energies[mask], np.arange(self.nmom_max + 1)).T
+        return mpi_helper.allreduce(util.einsum("jx,Px,Qx->jPQ", weights, Lx, Lx))
 
     @logging.with_timer("Self-energy moments")
     @logging.with_status("Constructing self-energy moments")
     def build_se_moments(self, zeta):
-        """Build the moments of the self-energy via convolution with tensor-hypercontraction.
+        r"""Build the moments of the self-energy via convolution with tensor-hypercontraction.
 
         Parameters
         ----------
-        moments_dd : numpy.ndarray
+        zeta : numpy.ndarray
             Moments of the density-density response.
 
         Returns
@@ -368,26 +402,79 @@ class dTDA(DFdTDA):
             Moments of the occupied self-energy.
         moments_vir : numpy.ndarray
             Moments of the virtual self-energy.
+
+        Notes
+        -----
+        Operations are ``O(nmom_max^2 * (naux^2 * nmo + naux * nmo^2))`` and memory
+        ``O(nmom_max * (naux^2 + nmo^2))``: cubic and quadratic in the system size, which
+        is the whole reason a tensor-hypercontracted path is worth having.
+
+        Reaching that needs the Green's function orbital index summed out before the
+        rotation rather than after.  Written the direct way, the convolution asks for
+
+        .. math::
+            \eta^{(t)}_{x,pq} = 2 \sum_{PQ} X_{pP} X_{xP} X_{qQ} X_{xQ}\, \zeta'^{(t)}_{PQ}
+
+        for every `x`, which is an ``O(naux^2 nmo^2)`` loop over an ``O(nmo^3)`` array.  But
+        `x` only ever enters the output through the weighted sums the convolution takes,
+
+        .. math::
+            \Sigma^{(n)}_{pq} = \sum_{x} \sum_{t \le n} \binom{n}{t} (\pm 1)^t
+                \epsilon_x^{\,n-t}\, \eta^{(t)}_{x,pq} ,
+
+        with the sign negative for the occupied sector.  Moving that sum inside the
+        auxiliary contraction leaves
+
+        .. math::
+            \Sigma^{(n)} = \sum_{t \le n} \binom{n}{t} (\pm 1)^t\;
+                X^T \Big( \zeta'^{(t)} \circ G^{(n-t)} \Big) X ,
+
+        with :math:`\circ` the elementwise product and :math:`G^{(j)}` the collocation
+        moments of `build_gf_collocation_moments`.  Neither `eta` nor the loop over `x`
+        survives, and the reduction over ranks moves onto the ``(naux, naux)`` moments,
+        which are smaller than the ``(nmo, nmo)`` self-energy moments they replace.
+
+        The whole ``t`` sum is accumulated in the auxiliary space before being rotated, so
+        there are ``2 (nmom_max + 1)`` rotations rather than one per ``(n, t)`` pair.  The
+        rotation is the only term carrying a factor of `nmo`, so doing it
+        ``(nmom_max + 2) / 2`` times fewer is most of the gain.
         """
 
-        # Setup dependent on diagonal SE
-        q0, q1 = self.mpi_slice(self.mo_energy_g.size)
-        if self.gw.diagonal_se:
-            eta = np.zeros((q1 - q0, self.nmom_max + 1, self.nmo))
-            pq = p = q = "p"
-        else:
-            eta = np.zeros((q1 - q0, self.nmom_max + 1, self.nmo, self.nmo))
-            pq, p, q = "pq", "p", "q"
+        Lp = self.integrals.Lp
+        moments = {
+            True: np.zeros((self.nmom_max + 1, self.nmo, self.nmo)),
+            False: np.zeros((self.nmom_max + 1, self.nmo, self.nmo)),
+        }
 
-        # Get the moments in (aux|aux) and rotate to (mo|mo)
-        for n in range(self.nmom_max + 1):
-            zeta_prime = np.linalg.multi_dot((self.cou, zeta[n], self.cou))
-            for x in range(q1 - q0):
-                Lpx = util.einsum("Pp,P->Pp", self.integrals.Lp, self.integrals.Lx[:, x + q0])
-                eta[x, n] = util.einsum(f"P{p},Q{q},PQ->{pq}", Lpx, Lpx, zeta_prime) * 2.0
+        # Factor two as in the density-density to screened-Coulomb rotation.  Written as a
+        # loop rather than one `einsum` so that no intermediate of the same size as the
+        # result is allocated alongside it.
+        zeta_prime = np.empty_like(zeta)
+        for t in range(self.nmom_max + 1):
+            zeta_prime[t] = np.linalg.multi_dot((self.cou, zeta[t], self.cou))
+        zeta_prime *= 2.0
 
-        # Construct the self-energy moments
-        moments_occ, moments_vir = self.convolve(eta)
+        for occupied in (True, False):
+            cou_g = self.build_gf_collocation_moments(occupied)
+            sign = -1.0 if occupied else 1.0
+
+            for n in range(self.nmom_max + 1):
+                accumulated = np.zeros((self.naux, self.naux))
+                for t in range(n + 1):
+                    accumulated += (binom(n, t) * sign**t) * (zeta_prime[t] * cou_g[n - t])
+
+                if self.gw.diagonal_se:
+                    moments[occupied][n] = np.diag(util.einsum("PQ,Pp,Qp->p", accumulated, Lp, Lp))
+                else:
+                    moments[occupied][n] = np.linalg.multi_dot((Lp.T, accumulated, Lp))
+
+            del cou_g
+
+        moments_occ, moments_vir = moments[True], moments[False]
+
+        # Numerical integration can lead to small non-hermiticity
+        moments_occ = 0.5 * (moments_occ + moments_occ.swapaxes(1, 2).conj())
+        moments_vir = 0.5 * (moments_vir + moments_vir.swapaxes(1, 2).conj())
 
         return moments_occ, moments_vir
 

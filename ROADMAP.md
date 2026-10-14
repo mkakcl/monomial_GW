@@ -840,9 +840,19 @@ this roadmap:
   both have independent gates.
 - [ ] Prototype block or multi-shift rational Krylov only for extreme condition numbers
   or aggressively compressed right-hand sides.
-- [ ] Investigate separable RI/ISDF/THC together with imaginary-time, Laplace, or Cauchy
+- [x] Investigate separable RI/ISDF/THC together with imaginary-time, Laplace, or Cauchy
   separation. Factorizing the RI vertex alone does not remove the nonseparable
-  particle-hole energy denominator.
+  particle-hole energy denominator. **Answered in [`THC.md`](THC.md), 2026-08-25.** The
+  denominator separates through a shared exponential grid, fitted per HHT pole against the
+  true gaps, with one measured scalar residual certifying the relative operator error at
+  every moment order; the scalar layer is [`momentGW/laplace.py`](momentGW/laplace.py) and
+  the auxiliary-space assembly and solver [`momentGW/thc_rpa.py`](momentGW/thc_rpa.py),
+  reached through `polarizability="thc-drpa"` and measured against the density-fitted
+  `dRPA` on PyTHC factorisations of the baseline systems.
+  What it does not answer favourably is the cost: solver cost goes as the *square* of the
+  THC rank, the measured rank for a 1e-4 relative integral error is 10 to 13 times `nao`
+  for every PyTHC construction, and the predicted crossover against the RI dRPA is
+  therefore 800 to 1400 orbitals. Whether to build the solver on that basis is `THC.md` §6.
 - [ ] Add locality and sparse pair-domain screening for large molecules.
 
 ### Rejected as default eta0 approaches

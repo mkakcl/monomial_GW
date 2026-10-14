@@ -1,0 +1,541 @@
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage[english]{babel}
+\usepackage[top=2.6cm, bottom=2.5cm, left=2.4cm, right=2.4cm]{geometry}
+\usepackage{amsmath, amssymb, amsfonts, mathtools, bm, nicefrac}
+\usepackage{booktabs}
+\usepackage{microtype}
+\usepackage{xcolor}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{fancyhdr}
+\usepackage[colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue]{hyperref}
+
+% Matches commands.sty in Tensor_hyper_contraction__THC_, so the bodies are interchangeable.
+\newcommand{\mat}[1]{{\mathbf{#1}}}
+\newcommand{\parth}[1]{\left(#1\right)}
+\newcommand{\sqrbrckts}[1]{\left[#1\right]}
+
+\newcommand{\Dcal}{\mathcal{A}}
+\newcommand{\Qcal}{\mathcal{Q}}
+\newcommand{\Ncal}{\mathcal{N}}
+\newcommand{\eb}{\tilde{\epsilon}}
+\newcommand{\Had}{\circ}
+
+\setlength\parindent{0pt}
+\setlength\parskip{8pt}
+
+\pagestyle{fancy}
+\setlength{\headheight}{14pt}
+\lhead{\normalsize\textrm{Marcus Allen}}
+\rhead{THC dRPA moments}
+\renewcommand{\headrulewidth}{0.4pt}
+
+\title{\vspace{-1.5cm}A separable route to the dRPA density--density moments\\
+under tensor hypercontraction}
+\author{Marcus Allen}
+\date{25 August 2026}
+
+\begin{document}
+\maketitle
+\vspace{-1.6cm}
+
+\begin{abstract}
+\noindent
+The direct random-phase approximation supplies the density--density moments that
+moment-conserving $GW$ convolves into a self-energy. Under density fitting those moments
+are reached by contracting a three-index vertex against the particle--hole energy
+denominator; under tensor hypercontraction (THC) the vertex factorises further, but the
+denominator does not, and every previous attempt in this project handled the mismatch by
+partitioning the particle--hole pairs and treating each region with a different expansion.
+This note derives a route that removes the partition. The denominator is represented on a
+grid of exponentials shared by every pole of the certified rational approximation to
+$\eta^{(0)}$ and by every moment order, the powers of the denominator are recovered
+exactly by a binomial expansion in the orbital energies, and a single measured scalar
+residual bounds the relative spectral error of the resulting auxiliary-space objects at
+\emph{every} order. Three candidate treatments of the higher powers are compared against an
+exact evaluation; two are rejected on measurement. The cost model and the measured THC rank
+requirement are given: every stage is cubic in operations and quadratic in memory, which
+is the property the whole exercise exists to obtain, while the constants place the
+crossover against the density-fitted route near one thousand orbitals.
+\end{abstract}
+
+\section*{The requirement}
+
+Every stage of a tensor-hypercontracted path must be $O(N^3)$ in operations and $O(N^2)$
+in memory. Nothing else justifies the construction: the density-fitted route is already
+available, is simpler, and carries a certified error budget, so a hypercontracted route
+that is merely faster by a constant has no reason to exist. What it buys is the exponent.
+
+The distinction between constant and exponent is worth stating sharply, because the two
+have different owners. The constant is dominated by the hypercontraction rank, a property
+of the factorisation algorithms, which are an active field and are expected to improve.
+The exponent is a property of the solver. No improvement in the integrals can repair a
+quartic contraction. A poor constant is therefore a reason to wait; a poor exponent is a
+defect, and the scaling of each stage is reported below on that basis rather than as an
+afterthought.
+
+\section{The object to be computed}
+
+Write the particle--hole gaps as $D_{ia} = \epsilon_a - \epsilon_i > 0$ and let
+$\mat{V} \in \mathbb{R}^{N_{\text{aux}} \times N_{ov}}$ be the vertex, so that the
+occupied--virtual electron repulsion integrals are
+\begin{align}
+    (ia|jb) = \sum_P V_{P,ia} V_{P,jb}.
+\end{align}
+The moments of the density--density response, projected into the auxiliary space, are
+\begin{align}
+    \bar{\bm\eta}^{(m)} = \mat{V} \bm\eta^{(m)} \mat{V}^T,
+    \qquad
+    \bm\eta^{(m)} = (\mat{X}+\mat{Y})\, \bm\Omega^m (\mat{X}+\mat{Y})^T ,
+\end{align}
+with $\bm\Omega$ the RPA excitation energies and $\mat{X}$, $\mat{Y}$ the RPA
+eigenvectors. These are the quantities the self-energy convolution consumes. The symbols
+$\mat{X}$ and $\mat{Y}$ appear only in this equation; from Section~2 onwards $X$ denotes
+the THC collocation matrix.
+
+Two families of auxiliary-space objects generate all of them. The first is purely
+polynomial in the gaps,
+\begin{align}
+    \Dcal^{(m)} = \mat{V}\, \mat{D}^m\, \mat{V}^T
+    \qquad \text{i.e.} \qquad
+    \Dcal^{(m)}_{PQ} = \sum_{ia} V_{P,ia}\, D_{ia}^m\, V_{Q,ia} ,
+    \label{eq:Dcal}
+\end{align}
+and the second carries the RPA screening,
+\begin{align}
+    \Ncal^{(m)}
+    = \frac{2}{\pi} \int_0^\infty
+      \parth{\mat{I} + 4\Qcal^{(1)}(t)}^{-1} \Qcal^{(m+1)}(t) \; \mathrm{d}t ,
+    \qquad
+    \Qcal^{(k)}(t) = \mat{V}\, \frac{\mat{D}^{k}}{\mat{D}^2 + t^2}\, \mat{V}^T .
+    \label{eq:compact}
+\end{align}
+Equation~\eqref{eq:compact} is the compact form of the RPA integral: it follows from
+writing $\bm\eta^{(0)} = (\mat{A}+\mat{B})^{-1}[(\mat{A}+\mat{B})(\mat{A}-\mat{B})]^{1/2}$,
+using $\mat{M}^{1/2} = \nicefrac{2}{\pi}\,\mat{M}\int_0^\infty (t^2\mat{I}+\mat{M})^{-1}
+\mathrm{d}t$, applying the Woodbury identity, and then eliminating the bare term with the
+push-through identity $(\mat{I}+\mat{M})^{-1} = \mat{I} - \mat{M}(\mat{I}+\mat{M})^{-1}$.
+Both terms that would otherwise have to cancel against one another disappear analytically.
+
+The two families combine into every moment through one recursion. Writing
+\begin{align}
+    \Dcal^{(m)} \;\text{for odd } m, \qquad \Ncal^{(m)} \;\text{for even } m,
+\end{align}
+and calling either $\mat{A}^{(m)}$,
+\begin{align}
+    \bar{\bm\eta}^{(m)}
+    = \mat{A}^{(m)} + 4 \!\!\sum_{\substack{k = 1,3,5,\dots \\ k \le m-1}}\!\!
+      \mat{A}^{(m-1-k)}\, \bar{\bm\eta}^{(k)} ,
+    \qquad \bar{\bm\eta}^{(0)} = \Ncal^{(0)} ,\quad \bar{\bm\eta}^{(1)} = \Dcal^{(1)} .
+    \label{eq:recursion}
+\end{align}
+The parity of $m-1-k$ always matches that of $m$, so the odd moments are built entirely
+from $\Dcal$ and the even ones entirely from $\Ncal$. This is an $O(N_{\text{aux}}^3)$
+recursion that never touches the particle--hole index.
+
+\subsection{The rational form of the integral}
+
+In production the $t$-integral in \eqref{eq:compact} is not quadratured. The inverse square
+root is replaced by a certified rational approximation
+$x^{-1/2} \approx \sum_j w_j (x + s_j)^{-1}$ on a rigorous spectral enclosure of
+$\tilde{\mat{M}} = \mat{D}^2 + 4\mat{W}\mat{W}^T$, $\mat{W} = \mat{D}^{1/2}\mat{V}^T$, whose
+poles $s_j$ and weights $w_j$ are chosen against a \emph{measured} scalar error. Equation
+\eqref{eq:compact} becomes a finite sum,
+\begin{align}
+    \Ncal^{(m)}
+    = \sum_j w_j \parth{\mat{I} + 4\Qcal^{(1)}(s_j)}^{-1} \Qcal^{(m+1)}(s_j) ,
+    \qquad
+    \Qcal^{(k)}(s) = \mat{V}\, \frac{\mat{D}^{k}}{\mat{D}^2 + s}\, \mat{V}^T ,
+    \label{eq:poles}
+\end{align}
+with the $\nicefrac{2}{\pi}$ absorbed into $w_j$. At the production tolerance of $10^{-14}$
+this is 18 to 19 poles on the systems used below. Everything that follows targets
+\eqref{eq:poles}: the shifts are a fixed, known set rather than a grid whose scale has to be
+optimised per calculation.
+
+\section{Why tensor hypercontraction does not simply substitute}
+
+Under THC the vertex factorises across the orbital pair,
+\begin{align}
+    (ia|jb) = \sum_{PQ} X_{iP} X_{aP}\, Z_{PQ}\, X_{jQ} X_{bQ} ,
+\end{align}
+so the natural replacement for $\mat{V}$ is $\mat{L}^T \mat{X}$, where
+$X_{P,ia} = X_{iP} X_{aP}$ and $\mat{Z} = \mat{L}\mat{L}^T$. Substituting into
+\eqref{eq:Dcal} costs nothing. Referencing the orbital energies to the chemical potential
+$\mu$ --- writing $\eb_i = \epsilon_i - \mu$ and $\eb_a = \epsilon_a - \mu$, which leaves
+$D_{ia} = \eb_a - \eb_i$ unchanged --- the power expands binomially into terms separable in
+$i$ and $a$,
+\begin{align}
+    \Dcal^{(m)} \to \mat{L}^T \Dcal_X^{(m)} \mat{L} ,
+    \qquad
+    \Dcal_{X,PQ}^{(m)} = \sum_{p=0}^{m} \binom{m}{p}
+        \sqrbrckts{\sum_i X_{iP} X_{iQ} (-\eb_i)^p}
+        \sqrbrckts{\sum_a X_{aP} X_{aQ} \eb_a^{\,m-p}} ,
+    \label{eq:binomialD}
+\end{align}
+which is $O(N^3)$ and is how the THC dTDA already works. The shift is not needed here ---
+no exponentials are involved --- but it costs nothing and keeps the expansion identical to
+the one Section~4 needs.
+
+Substituting into \eqref{eq:poles} does not work, because $\mat{D}^k/(\mat{D}^2+s)$ is not
+separable. Every earlier attempt in this project addressed that by splitting the
+particle--hole pairs at each quadrature point $z$ into $D \ll z$, $D \sim z$ and $D \gg z$
+regions, using the asymptotic series
+$D^{2r+1}/(D^2+z^2) = \sum_c (-1)^c D^{2r+1+2c} z^{-2c-2}$ on one side, the Laplace/cosine
+integral $\int_0^\infty \cos(zp)\, e^{-Dp}\,\mathrm{d}p$ on the other, and correction terms
+across the boundary. The separable builders can only mask on $i$ and $a$ independently, so
+the region --- a staircase in the sorted $(i,a)$ grid --- has to be approximated by unions of
+rectangles, and the bookkeeping dominates.
+
+That partition is \emph{not} required by the factorisation. It is required by the
+oscillatory inner quadrature, which cannot resolve $\cos(zp)$ against $e^{-Dp}$ across a
+wide range of $D$ at a single scale. Replacing the quadrature removes the partition.
+
+\section{A shared exponential representation}
+
+\subsection{The representation}
+
+With the same referencing to $\mu$, so that $\eb_i < 0 < \eb_a$, on a set of positive
+exponents $\{t_k\}$,
+\begin{align}
+    g_s(D) \equiv \frac{D}{D^2+s} \; \approx \; \sum_k c_k(s)\, e^{-t_k D} ,
+    \qquad
+    e^{-t_k D} = e^{t_k \eb_i}\, e^{-t_k \eb_a} .
+    \label{eq:expfit}
+\end{align}
+The shift enters only through the coefficients: \textbf{the exponents are shared by every
+pole and by every moment order}, so whatever a solver builds per exponent is built once.
+The $\mu$ reference is load-bearing rather than cosmetic --- it puts both factors in
+$[0,1]$, so neither overflows however wide the orbital range, and it makes the binomial in
+\eqref{eq:binomialD} a sum of like-signed terms.
+
+\subsection{What the residual certifies}
+
+The coefficients are obtained by weighted least squares against the \emph{true} set of gaps,
+minimising $\sum_{ia} \big[(\sum_k c_k e^{-t_k D_{ia}} - g_s(D_{ia}))/g_s(D_{ia})\big]^2$, so
+the reported residual
+\begin{align}
+    \varepsilon = \max_{ia} \frac{|\delta(D_{ia})|}{g_s(D_{ia})} ,
+    \qquad
+    \delta(D) = \sum_k c_k e^{-t_k D} - g_s(D) ,
+\end{align}
+is realised on the system at hand rather than bounded over an enclosing interval. It then
+transfers directly to the operator, and --- this is the point --- it does so at every moment
+order. Since $\Delta \Qcal^{(m+1)} = \mat{V}\,\mathrm{diag}(\mat{D}^m \delta)\,\mat{V}^T$ is
+symmetric, for any unit $\mat{u}$
+\begin{align}
+    \big| \mat{u}^T \Delta \Qcal^{(m+1)} \mat{u} \big|
+    \;=\; \Big| \sum_{ia} D_{ia}^m\, \delta(D_{ia})\, (\mat{V}^T\mat{u})_{ia}^2 \Big|
+    \;\le\; \varepsilon \sum_{ia} D_{ia}^m\, g_s(D_{ia})\, (\mat{V}^T\mat{u})_{ia}^2
+    \;=\; \varepsilon\, \mat{u}^T \Qcal^{(m+1)} \mat{u} ,
+\end{align}
+because $D^m g_s(D) > 0$ makes $\Qcal^{(m+1)}$ positive semidefinite. Hence
+\begin{align}
+    \big\| \Delta \Qcal^{(m+1)} \big\|_2 \;\le\; \varepsilon\, \big\| \Qcal^{(m+1)} \big\|_2
+    \qquad \text{for every } m .
+    \label{eq:bound}
+\end{align}
+One scalar number certifies the whole moment set, and it does not degrade with order.
+
+\subsection{Selecting the exponents}
+
+The exponential basis on a real gap distribution has a numerical rank near 30 in double
+precision: the least-squares effective rank saturates between 27 and 34 whether a geometric
+grid holds 48 points or 120. A geometric layout therefore reaches the achievable floor only
+by oversampling. Ranking a dense set of candidates by pivoted QR on the column-normalised
+basis $[e^{-t D_{ia}}]$ and keeping the leading pivots reaches the same floor with far
+fewer points (Table~\ref{tab:grid}).
+
+\begin{table}[h]
+\centering
+\begin{tabular}{rcc}
+\toprule
+& \multicolumn{2}{c}{worst relative residual on $g_s$, all poles} \\
+\cmidrule(l){2-3}
+points & geometric & pivot-selected \\
+\midrule
+36 & $4.4\times10^{-8}$ & $1.4\times10^{-10}$ \\
+42 & $4.5\times10^{-9}$ & $\bm{1.0\times10^{-12}}$ \\
+60 & $1.9\times10^{-11}$ & $2.9\times10^{-12}$ \\
+\bottomrule
+\end{tabular}
+\caption{Benzene, cc-pVDZ, 18 poles at a requested $\eta^{(0)}$ tolerance of $10^{-14}$.
+Solver cost is linear in the number of exponents, so the saving is direct.}
+\label{tab:grid}
+\end{table}
+
+Below a few times $10^{-13}$ the fit is limited by double precision rather than by the
+grid, and more points do not help; a request below that is rejected rather than silently
+answered. Table~\ref{tab:sizes} gives the sizes the search returns.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lccc}
+\toprule
+& \multicolumn{3}{c}{exponents required} \\
+\cmidrule(l){2-4}
+system & $\varepsilon \le 10^{-6}$ & $10^{-9}$ & $10^{-11}$ \\
+\midrule
+lithium hydride & 16 & 19 & 21 \\
+water           & 22 & 28 & 32 \\
+ozone           & 23 & 28 & 36 \\
+benzene         & 25 & 33 & 40 \\
+\bottomrule
+\end{tabular}
+\caption{cc-pVDZ, 18 to 19 poles. The measured residual is the realised one on the
+system's own gaps, and the operator error it certifies through \eqref{eq:bound} runs one to
+two decades inside it.}
+\label{tab:sizes}
+\end{table}
+
+\section{The higher powers}
+
+Equation \eqref{eq:expfit} supplies $\Qcal^{(1)}$. The moments need $\Qcal^{(m+1)}$ for
+even $m$ up to $n_{\max}-1$, and there are three ways to reach them.
+
+\paragraph{A: polynomial division.} The identity
+\begin{align}
+    \frac{D^{2r+1}}{D^2+s}
+    = \sum_{k=0}^{r-1} (-s)^k D^{2r-1-2k} \; + \; (-s)^r \frac{D}{D^2+s}
+    \label{eq:division}
+\end{align}
+is exact for every pair, and every term but the last is a shift-independent $\Dcal^{(j)}$
+that the dTDA already builds. Contracted into the auxiliary space this needs only two
+builds per exponent and one set of $\Dcal$ for the whole calculation, so it is much the
+cheapest. It is also, in disguise, what the previous implementations' \texttt{build\_large}
+plus \texttt{build\_correction\_large} amounted to.
+
+\paragraph{B: binomial in the orbital energies.} Keep the fit at $m=0$ and recover the
+power exactly, as in \eqref{eq:binomialD}:
+\begin{align}
+    \Qcal_X^{(m+1)}(s) \;\approx\; \sum_k c_k(s) \sum_{p=0}^{m} \binom{m}{p}\;
+      \mat{O}_p(t_k) \Had \mat{U}_{m-p}(t_k) ,
+    \label{eq:routeB}
+\end{align}
+with $\Had$ the elementwise product and
+\begin{align}
+    \big[\mat{O}_p(t)\big]_{PQ} = \sum_i X_{iP} X_{iQ}\, (-\eb_i)^p\, e^{t \eb_i} ,
+    \qquad
+    \big[\mat{U}_q(t)\big]_{PQ} = \sum_a X_{aP} X_{aQ}\, \eb_a^{\,q}\, e^{-t \eb_a} .
+    \label{eq:OU}
+\end{align}
+Every factor is non-negative in sign structure, so no cancellation is introduced. The cost
+is $(n_{\max}+1)$ builds per exponent instead of two.
+
+\paragraph{C: fit the target directly.} Fit $D^{m+1}/(D^2+s)$ on the same exponents and
+keep two builds per exponent at every order.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{cccc}
+\toprule
+& \multicolumn{3}{c}{relative error on $\Ncal^{(m)}$, max norm} \\
+\cmidrule(l){2-4}
+$m$ & A: division & B: binomial & C: direct fit \\
+\midrule
+0 & $5.3\times10^{-13}$ & $5.3\times10^{-13}$ & $5.3\times10^{-13}$ \\
+2 & $9.7\times10^{-11}$ & $9.7\times10^{-13}$ & $6.8\times10^{-8}$ \\
+4 & $1.0\times10^{-8}$  & $1.0\times10^{-12}$ & $2.3\times10^{-4}$ \\
+6 & $1.1\times10^{-6}$  & $1.0\times10^{-12}$ & $1.2\times10^{-1}$ \\
+8 & $\bm{1.2\times10^{-4}}$ & $\bm{9.8\times10^{-13}}$ & $\bm{9.3\times10^{-1}}$ \\
+\bottomrule
+\end{tabular}
+\caption{Benzene, cc-pVDZ, 42 exponents, measured against an exact evaluation of the same
+pole sum \eqref{eq:poles} with a density-fitted vertex, so that only the treatment of the
+denominator is under test.}
+\label{tab:routes}
+\end{table}
+
+Route A loses about one and a half decades per moment order. The terms of
+\eqref{eq:division} carry factors of $s^k$ that the answer does not, and although the
+cancellation is benign where $s \lesssim D_{\max}^2$, it is not where the pole shift is much
+larger. A finer grid does not recover it, because the loss is not in the fit.
+
+Route C saturates: at 100 exponents it is no better than at 40. A function growing like
+$D^{m-1}$ cannot be built from decaying exponentials without cancellation that double
+precision will not carry.
+
+Route B is flat in the moment order at $10^{-12}$, exactly as \eqref{eq:bound} predicts,
+and is the route adopted. It is worth noting that this kernel --- the binomial expansion of
+$D^m e^{-tD}$ --- is the one the earlier implementations already contained; what changes is
+everything around it.
+
+\section{Removing the Cholesky factor}
+
+Substituting $\mat{V} \to \mat{L}^T\mat{X}$ into \eqref{eq:poles} would appear to require
+$\mat{L}$, a Cholesky factor of $\mat{Z}$, since $\Qcal^{(k)} = \mat{L}^T \Qcal_X^{(k)}
+\mat{L}$ with $\Qcal_X^{(k)} = \mat{X}[\mat{D}^k/(\mat{D}^2+s)]\mat{X}^T$. The push-through
+identity $(\mat{I}+\mat{A}\mat{B})^{-1}\mat{A} = \mat{A}(\mat{I}+\mat{B}\mat{A})^{-1}$
+removes it:
+\begin{align}
+    \parth{\mat{I} + 4\mat{L}^T \Qcal_X^{(1)} \mat{L}}^{-1} \mat{L}^T
+    = \mat{L}^T \parth{\mat{I} + 4 \Qcal_X^{(1)} \mat{L}\mat{L}^T}^{-1}
+    = \mat{L}^T \parth{\mat{I} + 4 \Qcal_X^{(1)} \mat{Z}}^{-1} ,
+\end{align}
+so that $\Ncal^{(m)} = \mat{L}^T \Ncal_X^{(m)} \mat{L}$ with
+\begin{align}
+    \Ncal_X^{(m)} = \sum_j w_j \parth{\mat{I} + 4\Qcal_X^{(1)}(s_j)\mat{Z}}^{-1}
+                      \Qcal_X^{(m+1)}(s_j) .
+    \label{eq:NX}
+\end{align}
+The price is a non-symmetric solve in place of a Cholesky one, at the same
+$O(N_{\text{THC}}^3)$. The same substitution turns \eqref{eq:recursion} into
+\begin{align}
+    \bm\zeta^{(m)}
+    = \mat{A}_X^{(m)} + 4 \!\!\sum_{\substack{k=1,3,5,\dots \\ k \le m-1}}\!\!
+      \mat{A}_X^{(m-1-k)}\, \mat{Z}\, \bm\zeta^{(k)} ,
+    \qquad \bar{\bm\eta}^{(m)} = \mat{L}^T \bm\zeta^{(m)} \mat{L} ,
+    \label{eq:zeta}
+\end{align}
+with $\mat{A}_X^{(m)}$ equal to $\Dcal_X^{(m)}$ for odd $m$ and $\Ncal_X^{(m)}$ for even
+$m$. The $\bm\zeta$ produced here is in the same convention the existing THC dTDA
+self-energy builder consumes, which applies the two outer factors of $\mat{Z}$ at
+contraction time; no interface change is needed downstream.
+
+\section{Algorithm and cost}
+
+\begin{algorithm}[h]
+\caption{THC dRPA density--density moments}
+\begin{algorithmic}[1]
+\State Reference the orbital energies to $\mu$; form the gaps $D_{ia}$.
+\State Bound the spectrum of $\tilde{\mat{M}}$; select poles $\{s_j, w_j\}$ against the
+       requested $\eta^{(0)}$ tolerance.
+\State Rank candidate exponents by pivoted QR; grow the grid until the measured residual
+       $\varepsilon$ meets its tolerance; fit $c_k(s_j)$ for every pole. \hfill $O(N_{ov} n_t^2)$
+\For{each exponent $t_k$}
+    \State build $\mat{O}_p(t_k)$, $\mat{U}_q(t_k)$ for $p,q \le n_{\max}$ \hfill $O(n_{\max} N_{\text{THC}}^2 N)$
+    \State $\mat{R}_m(t_k) \gets \sum_p \binom{m}{p} \mat{O}_p \Had \mat{U}_{m-p}$ for even $m$
+\EndFor
+\State $\Qcal_X^{(m+1)}(s_j) \gets \sum_k c_k(s_j) \mat{R}_m(t_k)$ \hfill $O(n_{\text{pole}} n_{\max} n_t N_{\text{THC}}^2)$
+\State $\Ncal_X^{(m)} \gets \sum_j w_j (\mat{I} + 4\Qcal_X^{(1)}(s_j)\mat{Z})^{-1} \Qcal_X^{(m+1)}(s_j)$
+\State $\Dcal_X^{(m)}$ for odd $m$ by \eqref{eq:binomialD}, without the exponential factors.
+\State $\bm\zeta^{(m)}$ by the recursion \eqref{eq:zeta}. \hfill $O(n_{\max}^2 N_{\text{THC}}^3)$
+\end{algorithmic}
+\end{algorithm}
+
+Counting the passes each side actually takes, the leading terms are
+\begin{align}
+    \text{separable:} \quad
+        & n_t (n_{\max}+1) N_{\text{THC}}^2 N
+          \;+\; \tfrac{1}{2}(n_{\max}+1)^2 N_{\text{THC}}^3 , \\
+    \text{density-fitted:} \quad
+        & (3 n_{\text{pole}} + 2 n_{\max})\, N_{\text{aux}}^2\, N_{ov} .
+\end{align}
+The separable route is cubic in the system size and the density-fitted route quartic, so
+there is a crossover; where it falls is set almost entirely by the THC rank, which enters
+squared. Table~\ref{tab:crossover} evaluates the model at benzene's shape ratios.
+
+The self-energy stage that consumes $\bm\zeta^{(m)}$ has to meet the same requirement,
+and in a direct implementation it does not. Written as a loop over the Green's function
+orbitals it contracts an $(N_{\text{THC}}, N)$ vertex against $\bm\zeta$ once per
+orbital, which is $O(N_{\text{THC}}^2 N^2)$ operations over an $O(N^3)$ array. The
+orbital index reaches the output only through the weighted sums the moment convolution
+takes, so moving that sum inside the auxiliary contraction gives
+\begin{align}
+    \Sigma^{(n)} = \sum_{t \le n} \binom{n}{t} (\pm 1)^t\;
+        \mat{X}^T \parth{ \bm\zeta'^{(t)} \Had \mat{G}^{(n-t)} } \mat{X} ,
+    \qquad
+    G^{(j)}_{PQ} = \sum_{x \in \text{sector}} \epsilon_x^{\,j} X_{xP} X_{xQ} ,
+\end{align}
+with the sign negative for the occupied sector and the whole $t$ sum accumulated in the
+auxiliary space before a single rotation per order. Neither the array nor the loop
+survives, and the stage becomes $O(n_{\max}^2 (N_{\text{THC}}^2 N + N_{\text{THC}} N^2))$
+operations in $O(n_{\max}(N_{\text{THC}}^2 + N^2))$ memory.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lccc}
+\toprule
+& \multicolumn{3}{c}{crossover, orbitals} \\
+\cmidrule(l){2-4}
+THC rank & $n_t = 24$ & $n_t = 33$ & $n_t = 42$ \\
+\midrule
+$5 \times N$  & 114 & 134 & 155 \\
+$8 \times N$  & 380 & 433 & 486 \\
+$10 \times N$ & 686 & 769 & 853 \\
+$12 \times N$ & 1121 & 1241 & 1361 \\
+\bottomrule
+\end{tabular}
+\caption{$n_{\max} = 9$, 18 poles at an $\eta^{(0)}$ tolerance of $10^{-14}$, benzene's
+auxiliary-to-orbital and pair-to-orbital ratios held fixed.}
+\label{tab:crossover}
+\end{table}
+
+\section{Error budget}
+
+Three approximations enter, and each is measured separately rather than inferred from the
+others.
+
+\begin{enumerate}
+\item \textbf{The pole set.} Certified by the measured scalar error of the rational
+approximation to $x^{-1/2}$ over a rigorous enclosure of $\tilde{\mat{M}}$; at the
+production default this is $\sim\!10^{-15}$ on 18 to 19 poles.
+\item \textbf{The separable representation.} Certified by $\varepsilon$ through
+\eqref{eq:bound}, at every moment order. Measured, the realised operator error runs one to
+two decades inside the bound.
+\item \textbf{The factorisation itself.} Not certified --- measured. This is the dominant
+term in practice and it is discussed below.
+\end{enumerate}
+
+The factorisation error should be quoted against the \emph{density-fitted} integrals, not
+the exact ones: least-squares THC fits the density-fitted tensor, and on water in cc-pVDZ
+the auxiliary basis contributes $4.4\times10^{-3}$ relative on its own, which is larger than
+anything the factorisation adds and hides it completely.
+
+Table~\ref{tab:rank} gives the measured relationship for the most efficient construction
+available. The frontier shift is quoted for the worst of the systems tested at each accuracy
+rather than the average, because the systems do not fail together: at a rank of
+$8 \times N$ water and ozone are already inside 6~meV while lithium hydride is out at
+88~meV, its diffuse virtual orbital being the first thing the fit loses.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ccl}
+\toprule
+rank $/\,N$ & relative Frobenius error & worst frontier shift \\
+\midrule
+$4.6$ -- $5.7$   & $2.8\times10^{-2}$ -- $6.9\times10^{-2}$ & 278~meV \\
+$7.3$ -- $8.9$   & $2.1\times10^{-3}$ -- $3.6\times10^{-3}$ & 88~meV \\
+$8.1$ -- $10.7$  & $6.4\times10^{-4}$ -- $1.0\times10^{-3}$ & 7.7~meV \\
+$8.7$ -- $11.4$  & $1.8\times10^{-4}$ -- $3.5\times10^{-4}$ & 2.6~meV \\
+$9.0$ -- $13.6$  & $4.5\times10^{-5}$ -- $1.8\times10^{-4}$ & 1.1~meV \\
+\bottomrule
+\end{tabular}
+\caption{Least-squares THC with randomly-pivoted Cholesky point selection, cc-pVDZ, across
+water, lithium hydride and ozone; error against the density-fitted tensor in the same
+auxiliary basis, frontier shift against the density-fitted dTDA at $n_{\max}=3$.}
+\label{tab:rank}
+\end{table}
+
+A few meV therefore costs a rank near $11 \times N$, and the requirement does not fall with
+system size: benzene at $N = 114$ reaches $-2.5$~meV at $9.96 \times N$, the same band as
+the small systems. Read together with Table~\ref{tab:crossover}, that places the crossover
+against the density-fitted route near a thousand orbitals. The exponent grid is already
+close to its own floor, so neither of the two levers has much left to give.
+
+\section{Summary}
+
+The particle--hole denominator separates cleanly once it is represented on a shared
+exponential grid fitted per pole against the true gaps, with the powers of the denominator
+recovered exactly by a binomial expansion in the orbital energies rather than fitted. The
+region partitioning that dominated earlier implementations is an artefact of the oscillatory
+inner quadrature, not of the factorisation, and it disappears with it. A single measured
+scalar residual certifies the relative spectral error of every auxiliary-space object at
+every moment order, and the Cholesky factor of the THC Coulomb matrix is removable by a
+push-through identity.
+
+Every stage is then cubic in operations and quadratic in memory, which is the property the
+construction exists to obtain.
+
+The constants are another matter. Solver cost scales with the square of the
+hypercontraction rank; the rank needed for few-meV quasiparticle agreement is near
+$11 \times N$ and does not fall with system size; and the resulting crossover against the
+density-fitted route sits near one thousand orbitals. That is a statement about today's
+factorisation algorithms rather than about this construction, and it is the half of the
+problem that improvement in the integrals can reach. The exponent is the half that it
+cannot, and it is now correct.
+
+\end{document}
